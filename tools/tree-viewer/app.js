@@ -95,7 +95,9 @@ async function loadTree(project) {
   }
   const data = await res.json();
   titleEl.textContent = data.project || project;
-  metaEl.textContent = `Updated ${data.updated || "—"} · v${data.version ?? "?"}`;
+  const composed = data.composed ? " · composed" : "";
+  const err = data.compose_error ? ` · ERROR: ${data.compose_error}` : "";
+  metaEl.textContent = `Updated ${data.updated || "—"}${composed}${err}`;
   renderConstraints(data.constraints);
   pendingBanner.classList.toggle("hidden", !data.pending);
   const roots = data.nodes || [];

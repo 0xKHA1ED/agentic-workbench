@@ -1,0 +1,23 @@
+# Fragment: render subsystem (L2–L3)
+constraints:
+  codebase:
+  - sandbox/tik/generator/render
+nodes:
+- id: render-frame
+  title: draw_frame layer stack
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/render/frame.py
+- id: render-camera
+  title: Camera & impact shake
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/render/camera.py
+- id: render-overlay
+  title: Title, countdown, winner
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/render/overlay.py

@@ -1,0 +1,35 @@
+# Project tree — managed by scripts/project_tree.py
+# Thin L1 root — product slices live in fragments/*.yaml
+project: fragment-demo
+constraints:
+  codebase:
+  - sandbox/tik
+  note:
+  - example of distributed tree authoring for large codebases
+nodes:
+- id: root
+  title: Fragment demo (tik slices)
+  kind: group
+  status: weak
+  data:
+    readme: sandbox/tik/README.md
+  children:
+  - id: render
+    title: Cairo rendering
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/render.yaml
+  - id: formats-race
+    title: Race formats
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/formats-race.yaml
+  - id: direction
+    title: Show direction
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/direction.yaml
+updated: '2026-09-13'

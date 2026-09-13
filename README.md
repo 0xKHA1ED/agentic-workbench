@@ -15,9 +15,11 @@ Install by using this repo in Cursor (skills load from `.cursor/skills/`).
 ### Project tree CLI
 
 ```bash
-python3 scripts/project_tree.py show my-project
-python3 scripts/project_tree.py validate-patterns my-project
+python3 scripts/project_tree.py show my-project              # composed view
+python3 scripts/project_tree.py compose my-project
+python3 scripts/project_tree.py validate-patterns my-project --recursive
 python3 scripts/project_tree.py propose my-project batch --file batch.json
+# See projects/fragment-demo/ for thin-root + per-product fragments
 # → diff + interactive y/n in terminal
 ```
 

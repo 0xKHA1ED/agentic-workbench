@@ -1,0 +1,23 @@
+# Fragment: suspense, cinema, cinematography (L2)
+constraints:
+  codebase:
+  - sandbox/tik/generator
+nodes:
+- id: suspense
+  title: EmphasisCue from SimResult
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/suspense.py
+- id: cinematography
+  title: CinemaPlan & covering shots
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/cinematography.py
+- id: cinema-presets
+  title: Cinema shot presets
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/cinema/**

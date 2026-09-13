@@ -4,11 +4,15 @@ import glob
 from pathlib import Path
 from typing import Any
 
+from .fragments import fragment_as_tree, list_fragment_refs, load_fragment_file, resolve_fragment_path
 from .model import REPO_ROOT, walk_nodes
 
 
-def codebase_roots(tree: dict) -> list[Path]:
+def codebase_roots(tree: dict, node_data: dict | None = None) -> list[Path]:
     roots: list[Path] = []
+    data = node_data or {}
+    for item in data.get("codebase") or []:
+        roots.append(REPO_ROOT / str(item))
     for item in tree.get("constraints", {}).get("codebase") or []:
         roots.append(REPO_ROOT / str(item))
     if not roots:
@@ -42,17 +46,26 @@ def pattern_matches(pattern: str, roots: list[Path]) -> bool:
     return False
 
 
-def collect_pattern_issues(tree: dict) -> list[dict[str, Any]]:
-    roots = codebase_roots(tree)
+def collect_pattern_issues(
+    tree: dict,
+    *,
+    source: str = "root",
+    skip_subtree_stubs: bool = False,
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
 
     for node in walk_nodes(tree.get("nodes") or []):
         data = node.get("data") or {}
+        if skip_subtree_stubs and data.get("subtree"):
+            continue
+
+        roots = codebase_roots(tree, data)
         pattern = data.get("pattern")
         if not pattern:
-            if node.get("kind") == "work" and not node.get("children"):
+            if node.get("kind") == "work" and not node.get("children") and not data.get("subtree"):
                 issues.append(
                     {
+                        "source": source,
                         "node_id": node.get("id"),
                         "title": node.get("title"),
                         "kind": "missing_pattern",
@@ -65,6 +78,7 @@ def collect_pattern_issues(tree: dict) -> list[dict[str, Any]]:
             if not pattern_matches(part, roots):
                 issues.append(
                     {
+                        "source": source,
                         "node_id": node.get("id"),
                         "title": node.get("title"),
                         "kind": "broken_pattern",
@@ -76,12 +90,50 @@ def collect_pattern_issues(tree: dict) -> list[dict[str, Any]]:
     return issues
 
 
+def collect_all_pattern_issues(project: str, tree: dict, recursive: bool = False) -> list[dict[str, Any]]:
+    issues = collect_pattern_issues(tree, source="nodes.yaml", skip_subtree_stubs=recursive)
+    if not recursive:
+        return issues
+
+    for ref in list_fragment_refs(tree):
+        try:
+            path = resolve_fragment_path(project, ref)
+            if not path.exists():
+                issues.append(
+                    {
+                        "source": ref,
+                        "node_id": "?",
+                        "title": "?",
+                        "kind": "missing_fragment",
+                        "message": f"subtree file not found: {ref}",
+                    }
+                )
+                continue
+            fragment = load_fragment_file(path)
+            fragment_tree = fragment_as_tree(fragment, f"{project}:{ref}")
+            issues.extend(
+                collect_pattern_issues(fragment_tree, source=ref, skip_subtree_stubs=False)
+            )
+        except (ValueError, FileNotFoundError) as exc:
+            issues.append(
+                {
+                    "source": ref,
+                    "node_id": "?",
+                    "title": "?",
+                    "kind": "fragment_error",
+                    "message": str(exc),
+                }
+            )
+    return issues
+
+
 def format_issues(issues: list[dict[str, Any]]) -> str:
     if not issues:
         return "OK — all patterns resolve"
     lines = [f"{len(issues)} issue(s):"]
     for item in issues:
+        src = item.get("source", "?")
         lines.append(
-            f"  [{item['kind']}] {item['node_id']} ({item['title']}): {item['message']}"
+            f"  [{item['kind']}] {src} :: {item['node_id']} ({item['title']}): {item['message']}"
         )
     return "\n".join(lines)

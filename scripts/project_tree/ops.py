@@ -210,6 +210,20 @@ def add_group(tree: dict, parent_id: str, node_id: str, title: str) -> dict:
     return add_child(tree, parent_id, node_id, title, kind="group", status="weak")
 
 
+@_register("attach-subtree")
+def attach_subtree(
+    tree: dict,
+    parent_id: str,
+    node_id: str,
+    title: str,
+    fragment_path: str,
+    kind: str = "group",
+) -> dict:
+    """Add a stub node that composes children from a fragment YAML file."""
+    out = add_child(tree, parent_id, node_id, title, kind=kind, status="weak")
+    return set_data(out, node_id, {"subtree": fragment_path})
+
+
 @_register("add-allergies")
 def add_allergies(
     tree: dict,

@@ -89,8 +89,9 @@ def walk_nodes(nodes: list[dict]):
         yield from walk_nodes(node.get("children") or [])
 
 
-def ascii_tree(tree: dict) -> str:
-    lines = [f"{tree.get('project', '?')} — updated {tree.get('updated', '?')}"]
+def ascii_tree(tree: dict, composed: bool = False) -> str:
+    mode = "composed" if composed or tree.get("composed") else "raw"
+    lines = [f"{tree.get('project', '?')} — updated {tree.get('updated', '?')} ({mode})"]
     constraints = tree.get("constraints") or {}
     if constraints:
         lines.append(f"constraints: {constraints}")
@@ -102,8 +103,14 @@ def ascii_tree(tree: dict) -> str:
         title = node.get("title", node.get("id", "?"))
         data_hint = ""
         if node.get("data"):
-            data_hint = f" — {node['data']}"
-        lines.append(f"{prefix}{title} [{kind}] {status}{stale}{data_hint}")
+            data = dict(node["data"])
+            data.pop("_composed_from", None)
+            if data:
+                data_hint = f" — {data}"
+        frag = ""
+        if (node.get("data") or {}).get("subtree") and not (node.get("children") or []):
+            frag = " [fragment]"
+        lines.append(f"{prefix}{title} [{kind}] {status}{stale}{frag}{data_hint}")
         for child in node.get("children") or []:
             render(child, prefix + "  ")
 

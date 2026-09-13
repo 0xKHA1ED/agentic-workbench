@@ -25,9 +25,12 @@ projects/             # Per-initiative trees (nodes.yaml) — not committed by d
 pip install -r requirements.txt
 
 # Tree CLI
-python3 scripts/project_tree.py show <project>
-python3 scripts/project_tree.py validate-patterns <project>
+python3 scripts/project_tree.py show <project>              # composed (fragments expanded)
+python3 scripts/project_tree.py compose <project>
+python3 scripts/project_tree.py list-fragments <project>
+python3 scripts/project_tree.py validate-patterns <project> --recursive
 python3 scripts/project_tree.py propose <project> batch --file batch.json
+python3 scripts/project_tree.py propose <project> --fragment fragments/foo.yaml add-child ...
 
 # Spec discovery
 python3 scripts/spec_discovery.py validate projects/<name>/claims/<node>.json

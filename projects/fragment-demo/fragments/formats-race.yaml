@@ -1,0 +1,23 @@
+# Fragment: race format family (L2)
+constraints:
+  codebase:
+  - sandbox/tik/generator/formats
+nodes:
+- id: format-race
+  title: Cabinet race (built-in)
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/rules.py
+- id: format-circuit
+  title: Circuit laps
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/formats/circuit.py
+- id: format-leap
+  title: The leap
+  kind: work
+  status: weak
+  data:
+    pattern: sandbox/tik/generator/formats/leap.py

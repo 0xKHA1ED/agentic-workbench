@@ -11,6 +11,9 @@ from urllib.parse import unquote
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).parent))
+from project_tree import fragments
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UI_DIR = REPO_ROOT / "tools" / "tree-viewer"
 PROJECTS_DIR = REPO_ROOT / "projects"
@@ -60,6 +63,10 @@ class TreeHandler(SimpleHTTPRequestHandler):
         with path.open() as f:
             data = yaml.safe_load(f)
         data["pending"] = (PROJECTS_DIR / name / "nodes.yaml.proposed").exists()
+        try:
+            data = fragments.compose_tree(data, name)
+        except (FileNotFoundError, ValueError) as exc:
+            data["compose_error"] = str(exc)
         return data
 
     def _json_response(self, payload) -> None:
