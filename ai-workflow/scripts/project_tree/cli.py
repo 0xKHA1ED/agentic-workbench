@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+from . import decay
 from . import fragments
 from . import model
 from . import ops
@@ -205,6 +206,16 @@ def yaml_load(path: Path):
 def _load_composed(project: str) -> dict[str, Any]:
     raw = model.load_tree(project)
     return fragments.compose_tree(raw, project)
+
+
+def cmd_decay_scan(args: argparse.Namespace) -> int:
+    try:
+        result = decay.scan_decay(args.project, dry_run=args.dry_run)
+    except FileNotFoundError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_validate_patterns(args: argparse.Namespace) -> int:
@@ -489,6 +500,10 @@ def _extract_global_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             opts["no_prompt"] = True
             i += 1
             continue
+        if token == "--dry-run":
+            opts["dry_run"] = True
+            i += 1
+            continue
         cleaned.append(token)
         i += 1
     return cleaned, opts
@@ -511,6 +526,7 @@ def main(argv: list[str] | None = None) -> int:
             "validate-patterns",
             "compose",
             "list-fragments",
+            "decay-scan",
         ],
     )
     parser.add_argument("project", help="Project name (meta, examples/*, or host projects/*)")
@@ -549,13 +565,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Skip y/n prompt (for agents). Default: prompt in interactive terminal.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="For decay-scan: report actions without writing nodes.yaml",
+    )
 
     args = parser.parse_args(argv)
     for key, value in global_opts.items():
         setattr(args, key, value)
     if not hasattr(args, "no_prompt"):
         args.no_prompt = False
+    if not hasattr(args, "dry_run"):
+        args.dry_run = False
 
+    if args.command == "decay-scan":
+        return cmd_decay_scan(args)
     if args.command == "validate-patterns":
         return cmd_validate_patterns(args)
     if args.command == "compose":

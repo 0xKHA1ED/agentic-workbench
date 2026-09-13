@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import glob
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,75 @@ def codebase_roots(tree: dict, node_data: dict | None = None) -> list[Path]:
 
 def split_patterns(raw: str) -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def _collect_pattern_paths(pattern: str, roots: list[Path]) -> list[Path]:
+    """Resolve a single pattern to concrete file paths."""
+    found: set[Path] = set()
+
+    def add_candidate(base: Path) -> None:
+        if base.is_file():
+            found.add(base.resolve())
+            return
+        matches = glob.glob(str(base), recursive=True)
+        for match in matches:
+            path = Path(match).resolve()
+            if path.is_file():
+                found.add(path)
+
+    candidate = REPO_ROOT / pattern
+    if candidate.exists():
+        add_candidate(candidate.resolve())
+    add_candidate(candidate.resolve())
+
+    for root in roots:
+        rel = pattern
+        for prefix in ("sandbox/", "projects/"):
+            if rel.startswith(prefix):
+                rel = rel[len(prefix) :]
+        anchored = (root / rel).resolve()
+        if anchored.exists():
+            add_candidate(anchored)
+        add_candidate(anchored)
+
+    return sorted(found)
+
+
+def resolve_pattern_files(node: dict, tree: dict) -> list[Path]:
+    """Return all files matching a node's data.pattern within the tree context."""
+    data = node.get("data") or {}
+    pattern = data.get("pattern")
+    if not pattern:
+        return []
+
+    roots = codebase_roots(tree, data)
+    files: set[Path] = set()
+    for part in split_patterns(str(pattern)):
+        files.update(_collect_pattern_paths(part, roots))
+    return sorted(files)
+
+
+def _relative_repo_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def _file_content_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def compute_pattern_fingerprint(node: dict, tree: dict) -> str:
+    """SHA-256 hex digest of sorted rel_path:content_hash entries for pattern files."""
+    entries = []
+    for path in resolve_pattern_files(node, tree):
+        rel_path = _relative_repo_path(path)
+        entries.append(f"{rel_path}:{_file_content_hash(path)}")
+    entries.sort()
+    payload = "\n".join(entries)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def pattern_matches(pattern: str, roots: list[Path]) -> bool:
