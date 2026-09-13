@@ -1,6 +1,6 @@
 ---
 name: scope-contract
-description: Turn messy intent into a skimmable scope contract (GOAL/IN/OUT/MUST/VERIFY + examples + checklist). Use when user invokes /scope-contract, asks for a fast spec, scope contract, or falsifiable spec before implementation. Manual-only — never auto-invoke.
+description: Turn messy intent into a skimmable scope contract (GOAL/IN/OUT/MUST/VERIFY with executable assertions + examples + checklist). Use when user invokes /scope-contract, asks for a fast spec, scope contract, or falsifiable spec before implementation. Manual-only — never auto-invoke.
 disable-model-invocation: true
 ---
 
@@ -47,8 +47,10 @@ No extra sections. No paragraphs outside the template.
 - <red lines — max 5 bullets>
 
 ## VERIFY
-- [ ] <binary pass/fail check>
-- [ ] <command, test, or observable proof>
+- [ ] check_type: pytest | `pytest <path/to/test.py> -k <test_name>`
+- [ ] check_type: command | `python3 <command_and_args>`
+- [ ] check_type: ast_symbol | `<path/to/file.py>` exports `[SymbolA, SymbolB]`
+- [ ] <observable pass/fail check if not purely automated>
 
 ## EXAMPLES
 | Case | Input / Situation | Expected |
@@ -65,7 +67,11 @@ No extra sections. No paragraphs outside the template.
 - **GOAL**: one sentence. No "why" or background.
 - **IN / OUT**: nouns and boundaries, not implementation.
 - **MUST / MUST NOT**: falsifiable. "Handle errors gracefully" is banned — say what happens on error.
-- **VERIFY**: every item must be checkable without reading code. Prefer commands or observable behavior.
+- **VERIFY**: every item must be checkable without reading code. Support executable assertion syntax:
+  - `check_type: pytest | <command>` — specific test command executing via pytest
+  - `check_type: command | <command>` — shell/python command expecting exit code 0
+  - `check_type: ast_symbol | <file> exports [<symbols>]` — verifiable AST symbol definitions
+  - Executable verification powers automated test execution via `workflow_execute_verification`.
 - **EXAMPLES**: 2–4 rows max. Capture the tricky cases.
 - **ACCEPTANCE**: mirror VERIFY in plain language for non-engineers when relevant.
 - Total output **under 40 lines** excluding the examples table.
@@ -94,10 +100,10 @@ User pastes or @-references a spec. Output **only**:
 **Issues** (only if FIX — max 3, each one line):
 - ...
 
-**30s scan:** GOAL ✓/✗ | OUT explicit ✓/✗ | VERIFY falsifiable ✓/✗ | EXAMPLES cover risk ✓/✗
+**30s scan:** GOAL ✓/✗ | OUT explicit ✓/✗ | VERIFY executable / falsifiable ✓/✗ | EXAMPLES cover risk ✓/✗
 ```
 
-**Approve** unless: ambiguous GOAL, missing OUT, VERIFY not falsifiable, or no example for the riskiest case.
+**Approve** unless: ambiguous GOAL, missing OUT, VERIFY not falsifiable or missing executable assertions, or no example for the riskiest case.
 
 Do not rewrite the spec unless user says "fix it".
 

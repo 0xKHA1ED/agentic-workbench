@@ -1,33 +1,25 @@
 ---
 name: project-tree
-description: Maintain project trees via scripts/project_tree.py only. Projects live in meta/, examples/*, or host projects/<name>/ — show tree, propose mutations (diff), apply/reject after user approval. Never edit nodes.yaml directly.
+description: Maintain project trees via MCP tools or scripts/project_tree.py. Projects live in meta/, examples/*, or host projects/<name>/ — show tree, propose mutations (diff), apply/reject after user approval. Never edit nodes.yaml directly.
 disable-model-invocation: true
 ---
 
 # Project Tree (programmatic)
 
-**AI authors the tree. CLI persists it. User approves.**
+**AI authors the tree. CLI/MCP persists it. User approves.**
 
 The tree is a **work map** (concerns, pain, status) — not a filesystem mirror. At 500k LOC, use **thin root + fragment files per product**.
 
-**AI must never edit `nodes.yaml`, `fragments/*.yaml`, or `*.proposed` directly.** All mutations go through the CLI.
+**AI must never edit `nodes.yaml`, `fragments/*.yaml`, or `*.proposed` directly.** All mutations go through MCP tools (`workflow_propose_tree_mutation`) or the CLI (`scripts/project_tree.py`).
 
 Announce: "Using project-tree skill."
-
-Run from **`ai-workflow/`** package root (or `ai-workflow/scripts/` from host repo):
-
-```bash
-python scripts/project_tree.py <command> <project> [args]
-```
-
-Install once: `pip install -r requirements.txt`
 
 ## Who does what
 
 | Role | Responsibility |
 |------|----------------|
-| **AI** | Read docs/code; infer concerns; propose structure; batch ops; attach `data.pattern` / `data.pain` |
-| **CLI** | Diff, persist, compose fragments, validate patterns — never decide semantics |
+| **AI** | Fetch node context (`workflow_get_node`); orient tree (`workflow_orient`); propose mutations directly via MCP (`workflow_propose_tree_mutation`); batch ops; attach `data.pattern` / `data.pain` |
+| **CLI / MCP** | Diff, persist, compose fragments, validate patterns — never decide semantics |
 | **User** | Approve diffs; promote `weak` → `strong`; pick today's work |
 
 **Never** rebuild the whole tree. **Never** auto-apply. **Never** set `strong` for the user.
@@ -83,7 +75,96 @@ nodes:
 3. All nodes `weak` by default
 4. Drill down only when user picks a branch
 
-## Commands
+## MCP Tools (Native Agent Invocation)
+
+In Cursor sessions with the `ai-workflow` MCP server configured, **agents invoke MCP tools directly**. Do NOT demand or output manual terminal commands for tree mutations or node inspection.
+
+### Fetch Node Context: `workflow_get_node`
+
+Inspect complete node context before proposing changes (status, pain, pattern, linked claims, contract, verification, parent, children):
+
+```json
+{
+  "project": "<project>",
+  "node_id": "<node_id>"
+}
+```
+
+Returns deep node state without parsing YAML files directly.
+
+### Orientation: `workflow_orient`
+
+Get a high-level overview of weak nodes, decayed nodes, and pending proposals:
+
+```json
+{
+  "project": "<project>",
+  "filter": "weak" // "weak" | "decayed" | "all"
+}
+```
+
+### Propose Mutation: `workflow_propose_tree_mutation`
+
+Stage an atomic tree mutation directly via MCP (non-blocking, diff generated automatically):
+
+```json
+{
+  "project": "<project>",
+  "target_node_id": "<node_id>",
+  "operation": "add_child" | "set_data" | "set_status" | "mark_stale" | "clear_stale" | "reparent" | "attach_subtree",
+  "payload": { ... },
+  "fragment": "fragments/<file>.yaml" // optional, targets specific fragment
+}
+```
+
+#### MCP Mutation Examples:
+- **Add child work node**:
+  ```json
+  {
+    "project": "my-platform",
+    "target_node_id": "certs",
+    "operation": "add_child",
+    "payload": {
+      "id": "validation",
+      "title": "Validation layer",
+      "kind": "work",
+      "status": "weak",
+      "data": { "pattern": "services/inspection-certs/validate/**" }
+    },
+    "fragment": "fragments/certs.yaml"
+  }
+  ```
+- **Attach subtree fragment**:
+  ```json
+  {
+    "project": "my-platform",
+    "target_node_id": "root",
+    "operation": "attach_subtree",
+    "payload": {
+      "id": "certs",
+      "title": "Inspection certificates",
+      "fragment_path": "fragments/certs.yaml",
+      "kind": "group"
+    }
+  }
+  ```
+- **Attach pain / pattern to existing node**:
+  ```json
+  {
+    "project": "my-platform",
+    "target_node_id": "validation",
+    "operation": "set_data",
+    "payload": {
+      "pain": "Marbles tunneling through dynamic colliders at high speed",
+      "pattern": "services/inspection-certs/validate/**"
+    },
+    "fragment": "fragments/certs.yaml"
+  }
+  ```
+
+---
+
+## Commands (CLI Fallback / Human Review)
 
 | Command | Purpose |
 |---------|---------|
@@ -94,9 +175,9 @@ nodes:
 | `list-fragments <project>` | Linked subtrees + files on disk |
 | `validate-patterns <project>` | Check patterns on root |
 | `validate-patterns <project> --recursive` | Root + all linked fragments |
-| `propose <project> <op> ...` | Mutate root `nodes.yaml` |
-| `propose <project> --fragment fragments/foo.yaml <op> ...` | Mutate one fragment |
-| `apply` / `reject` / `pending` | Same `--fragment` flag when needed |
+| `propose <project> <op> ...` | CLI mutate root `nodes.yaml` |
+| `propose <project> --fragment fragments/foo.yaml <op> ...` | CLI mutate one fragment |
+| `apply` / `reject` / `pending` | User resolves staged proposals |
 
 ## Status model
 
@@ -137,25 +218,21 @@ nodes:
 | `mark-stale` / `clear-stale` | node_id [notes] | |
 | `rename` / `reparent` | … | |
 
-```bash
-# Root: add product stub
-python scripts/project_tree.py propose my-platform attach-subtree root certs "Inspection certificates" fragments/certs.yaml --no-prompt
-
-# Fragment: add subsystem
-python scripts/project_tree.py propose my-platform --fragment fragments/certs.yaml add-child certs validation "Validation layer" work --no-prompt
-```
-
 ## Workflow (mandatory)
 
-1. `show` or tree viewer (composed view) — note any `⚠ Pending` lines
-2. Discuss structure — names from user unless asked
-3. **`propose ... --no-prompt`** — AI stages diff only (never edit yaml by hand)
-4. User reviews in terminal:
+1. **Inspect context**:
+   - Call `workflow_orient` or `workflow_get_node` via MCP to inspect node details, pain points, patterns, and verify status.
+   - Or run `show <project>` in CLI. Note any `⚠ Pending` lines.
+2. **Discuss structure**:
+   - Align on names and hierarchy with the user.
+3. **Propose mutation via MCP**:
+   - Agent calls `workflow_propose_tree_mutation` directly via MCP tools.
+   - **Never demand manual terminal commands from the user to stage mutations.** Call MCP directly.
+   - (CLI fallback: `python scripts/project_tree.py propose ... --no-prompt`).
+4. **User reviews in terminal or Cockpit**:
    - `pending <project> [--fragment …]` — reprint diff
    - `apply` or `reject` with the **same** `--fragment` flag as propose
 5. `validate-patterns --recursive` after codebase moves
-
-**Agent sessions:** always `--no-prompt`. Cursor chat is non-interactive — user finishes apply/reject in terminal.
 
 **One pending per project:** root and fragment proposals share a single gate — resolve any pending before the next `propose`.
 
@@ -167,4 +244,4 @@ See `examples/fragment-demo/` for a working thin-root + fragments example.
 
 ## Adding new operations
 
-Extend `scripts/project_tree/ops.py` + `cli.py` — do not edit yaml by hand.
+Extend `scripts/project_tree/ops.py` + `cli.py` + `workflow_mcp.py` — do not edit yaml by hand.

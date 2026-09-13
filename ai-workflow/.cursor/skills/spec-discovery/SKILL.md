@@ -1,84 +1,81 @@
 ---
 name: spec-discovery
-description: Discover specs via triage — AI proposes falsifiable claims as JSON, user approves one at a time in terminal, assemble scope-contract. Use after picking a weak tree node and explaining pain. Manual-only — never auto-invoke.
+description: Discover specs via triage — AI stages falsifiable claims directly via workflow_stage_contract_claims MCP tool, user approves in Cockpit or terminal, assemble scope-contract. Use after picking a weak tree node and explaining pain.
 disable-model-invocation: true
 ---
 
 # Spec Discovery
 
-Turn pain + investigation into an approved scope contract **without prose in chat**. AI proposes **claims**; user triages in terminal; script assembles the spec.
+Turn pain + investigation into an approved scope contract **without prose in chat**. AI stages **claims** via MCP; user triages in terminal or Cockpit; script assembles the spec.
 
 Announce: "Using spec-discovery skill."
-
-Run from repo root:
-
-```bash
-python scripts/spec_discovery.py <command> ...
-```
 
 ## When to use
 
 After:
-1. `project-tree show <project>` — picked a **weak** node (or new child)
-2. User explained **why it hurts** (capture in node `data.pain` via project-tree)
+1. `workflow_orient` or `project-tree show <project>` — picked a **weak** node (or new child)
+2. User explained **why it hurts** (capture in node `data.pain` via `workflow_propose_tree_mutation`)
 3. Optional: decomposed into child nodes via project-tree batch
 
 ## Workflow
 
 ### 1 — Investigate + discuss (chat)
 
-- Read node `data` (pain, paths) and relevant codebase
+- Fetch node details via `workflow_get_node` (pain, paths, existing contract) and read relevant codebase
 - Ask **≤2 questions** only if VERIFY cannot be inferred
 - Do **not** write scope-contract prose in chat
 
-### 2 — Write claims JSON (AI)
+### 2 — Stage claims via MCP (`workflow_stage_contract_claims`)
 
-Save to `<project-dir>/claims/<node-id>.json` (e.g. `meta/claims/`, or `projects/<name>/claims/` in host repo):
+**Agents invoke `workflow_stage_contract_claims` directly via MCP.** Do NOT require the user to copy-paste or manually write JSON files:
 
 ```json
 {
   "project": "my-project",
-  "node": "validation-layer",
-  "title": "Short title",
+  "node_id": "validation-layer",
   "goal": "One sentence observable outcome",
-  "in": ["boundary nouns"],
-  "out": ["explicit exclusions"],
   "claims": [
     {
       "id": "c1",
       "kind": "verify",
-      "text": "Falsifiable statement — command or observable behavior",
-      "source": "path/to/file.py:42",
-      "rationale": "optional one line",
-      "examples": [{"case": "edge", "input": "...", "expected": "..."}]
+      "text": "pytest services/inspection-certs/tests/test_validate.py::test_expired_root passes",
+      "check_command": "pytest services/inspection-certs/tests/test_validate.py::test_expired_root",
+      "source": "services/inspection-certs/validate/root.py:42",
+      "examples": [{"case": "expired cert", "input": "cert with exp 2020-01-01", "expected": "ExpiredSignatureError"}]
+    },
+    {
+      "id": "c2",
+      "kind": "must",
+      "text": "Raise ExpiredSignatureError with exact expiry timestamp in message"
+    },
+    {
+      "id": "c3",
+      "kind": "must_not",
+      "text": "Silently swallow validation errors or accept unsigned certs"
     }
-  ]
+  ],
+  "in_scope": ["boundary nouns"],
+  "out_scope": ["explicit exclusions"]
 }
 ```
 
 **Claim kinds:** `verify` | `must` | `must_not`
 
 **Rules (same as scope-contract):**
-- Max **15 claims** per file; prioritize riskiest first
+- Max **15 claims** per node; prioritize riskiest first
 - Every `text` must be falsifiable — ban "handle gracefully", "robust", "properly"
 - `goal` is required; shown once for y/n before claims
-- Do **not** set `decision` fields — triage script owns those
+- Do **not** set `decision` fields — triage owns those
 
-Validate before handing off:
+The tool automatically validates claims against vague language, saves to `<project-dir>/claims/<node-id>.json`, and notifies Cockpit.
 
-```bash
-python scripts/spec_discovery.py validate projects/<project>/claims/<node-id>.json
-```
+Tell the user:
+> Staged claims for `<node-id>`. Review in Cockpit or run:
+> `python scripts/spec_discovery.py review projects/<project>/claims/<node-id>.json`
 
-Tell user:
+### 3 — User triages (terminal or Cockpit)
 
-```bash
-python scripts/spec_discovery.py review projects/<project>/claims/<node-id>.json
-```
-
-### 3 — User triages (terminal)
-
-User runs `review` — **not the agent**. One claim at a time:
+User runs `review` (or reviews in Cockpit) — **not the agent**. One claim at a time:
 
 | Key | Action |
 |-----|--------|
@@ -108,12 +105,34 @@ Writes `projects/<project>/specs/<node-id>.md` (scope-contract format).
 
 ### 5 — Link to tree
 
-```bash
-python scripts/project_tree.py propose <project> set-data <node-id> '{"spec":"specs/<node-id>.md","pain":"..."}' --no-prompt
-python scripts/project_tree.py propose <project> set-status <node-id> spec_approved --no-prompt
+Agent calls `workflow_propose_tree_mutation` directly via MCP:
+
+```json
+{
+  "project": "<project>",
+  "target_node_id": "<node-id>",
+  "operation": "set_data",
+  "payload": {
+    "spec": "specs/<node-id>.md",
+    "contract": "specs/<node-id>.md"
+  }
+}
 ```
 
-User approves tree diff in terminal.
+Followed by:
+
+```json
+{
+  "project": "<project>",
+  "target_node_id": "<node-id>",
+  "operation": "set_status",
+  "payload": {
+    "status": "spec_approved"
+  }
+}
+```
+
+User approves tree diff in terminal or Cockpit.
 
 ## Decomposition (split pain into nodes)
 
