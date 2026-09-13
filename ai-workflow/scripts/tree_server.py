@@ -15,7 +15,7 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "scripts"))
 
 from project_tree import fragments
-from project_tree.model import list_projects, proposed_path
+from project_tree.model import list_projects
 
 UI_DIR = PACKAGE_ROOT / "tools" / "tree-viewer"
 
@@ -50,7 +50,7 @@ class TreeHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def _load_tree(self, name: str) -> dict:
-        from project_tree.model import nodes_path, resolve_project_name
+        from project_tree.model import nodes_path, resolve_project_name, list_pending_proposals
 
         name = resolve_project_name(name)
         path = nodes_path(name)
@@ -58,7 +58,9 @@ class TreeHandler(SimpleHTTPRequestHandler):
             raise FileNotFoundError(name)
         with path.open() as f:
             data = yaml.safe_load(f)
-        data["pending"] = proposed_path(name).exists()
+        pending_list = list_pending_proposals(name)
+        data["pending"] = len(pending_list) > 0
+        data["pending_targets"] = [p[0] or "nodes.yaml" for p in pending_list]
         try:
             data = fragments.compose_tree(data, name)
         except (FileNotFoundError, ValueError) as exc:
