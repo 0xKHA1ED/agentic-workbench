@@ -59,6 +59,30 @@ def find_node_in_tree(tree: dict, node_id: str) -> dict | None:
     return find_node(tree.get("nodes") or [], node_id)
 
 
+def find_parent(nodes: list[dict], node_id: str) -> dict | None:
+    for node in nodes:
+        for child in node.get("children") or []:
+            if child.get("id") == node_id:
+                return node
+            found = find_parent([child], node_id)
+            if found:
+                return found
+    return None
+
+
+def find_parent_in_tree(tree: dict, node_id: str) -> dict | None:
+    return find_parent(tree.get("nodes") or [], node_id)
+
+
+def contains_descendant(node: dict, target_id: str) -> bool:
+    for child in node.get("children") or []:
+        if child.get("id") == target_id:
+            return True
+        if contains_descendant(child, target_id):
+            return True
+    return False
+
+
 def walk_nodes(nodes: list[dict]):
     for node in nodes:
         yield node

@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Callable
 
-from .model import find_node_in_tree
+from .model import contains_descendant, find_node_in_tree
 
 # Registry of operations for single and batch propose
 OP_HANDLERS: dict[str, Callable[..., dict]] = {}
@@ -36,7 +36,7 @@ def add_child(
     node_id: str,
     title: str,
     kind: str = "work",
-    status: str = "empty",
+    status: str = "weak",
 ) -> dict:
     out = copy.deepcopy(tree)
     parent = find_node_in_tree(out, parent_id)
@@ -83,6 +83,68 @@ def mark_stale(tree: dict, node_id: str, notes: str | None = None) -> dict:
     return out
 
 
+@_register("clear-stale")
+def clear_stale(tree: dict, node_id: str) -> dict:
+    out = copy.deepcopy(tree)
+    node = find_node_in_tree(out, node_id)
+    if not node:
+        raise ValueError(f"Node not found: {node_id}")
+    node["stale"] = False
+    node.pop("notes", None)
+    return out
+
+
+@_register("rename")
+def rename(tree: dict, node_id: str, title: str) -> dict:
+    out = copy.deepcopy(tree)
+    node = find_node_in_tree(out, node_id)
+    if not node:
+        raise ValueError(f"Node not found: {node_id}")
+    if not title.strip():
+        raise ValueError("title must be non-empty")
+    node["title"] = title.strip()
+    return out
+
+
+def _detach_node(nodes: list[dict], node_id: str) -> dict | None:
+    for i, node in enumerate(nodes):
+        if node.get("id") == node_id:
+            return nodes.pop(i)
+        children = node.get("children") or []
+        found = _detach_node(children, node_id)
+        if found is not None:
+            return found
+    return None
+
+
+@_register("reparent")
+def reparent(tree: dict, node_id: str, new_parent_id: str) -> dict:
+    out = copy.deepcopy(tree)
+    if node_id == new_parent_id:
+        raise ValueError("cannot reparent node under itself")
+
+    node = find_node_in_tree(out, node_id)
+    if not node:
+        raise ValueError(f"Node not found: {node_id}")
+
+    new_parent = find_node_in_tree(out, new_parent_id)
+    if not new_parent:
+        raise ValueError(f"Parent node not found: {new_parent_id}")
+
+    if contains_descendant(node, new_parent_id):
+        raise ValueError("cannot reparent under a descendant")
+
+    detached = _detach_node(out.get("nodes") or [], node_id)
+    if detached is None:
+        raise ValueError(f"Node not found: {node_id}")
+
+    children = _ensure_children(new_parent)
+    if any(c.get("id") == node_id for c in children):
+        raise ValueError(f"Child already exists under {new_parent_id}: {node_id}")
+    children.append(detached)
+    return out
+
+
 @_register("include-meal")
 def include_meal(tree: dict, meal: str) -> dict:
     out = copy.deepcopy(tree)
@@ -111,7 +173,7 @@ def include_meal(tree: dict, meal: str) -> dict:
         if str(existing.get("notes", "")).startswith("superseded") or "excluded" in str(existing.get("notes", "")):
             existing.pop("notes", None)
     else:
-        children.append({"id": meal, "title": meal.capitalize(), "kind": "work", "status": "empty"})
+        children.append({"id": meal, "title": meal.capitalize(), "kind": "work", "status": "weak"})
     return out
 
 
@@ -145,7 +207,7 @@ def exclude_meal(tree: dict, meal: str) -> dict:
 
 @_register("add-group")
 def add_group(tree: dict, parent_id: str, node_id: str, title: str) -> dict:
-    return add_child(tree, parent_id, node_id, title, kind="group", status="discussing")
+    return add_child(tree, parent_id, node_id, title, kind="group", status="weak")
 
 
 @_register("add-allergies")
@@ -183,6 +245,19 @@ def apply_op(tree: dict, op: str, args: list[Any] | None = None, kwargs: dict[st
     args = args or []
     kwargs = kwargs or {}
     return OP_HANDLERS[op](tree, *args, **kwargs)
+
+
+@_register("set-all-weak")
+def set_all_weak(tree: dict, *preserve: Any) -> dict:
+    """Set every node to weak except statuses listed in preserve (default: strong)."""
+    preserve_set = set(preserve) if preserve else {"strong"}
+    out = copy.deepcopy(tree)
+    from .model import walk_nodes
+
+    for node in walk_nodes(out.get("nodes") or []):
+        if node.get("status") not in preserve_set:
+            node["status"] = "weak"
+    return out
 
 
 def apply_batch(tree: dict, operations: list[dict[str, Any]]) -> dict:

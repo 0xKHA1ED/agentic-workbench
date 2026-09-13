@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from . import model
 from . import ops
+from . import patterns
 
 
 def _diff(before: str, after: str, path: str) -> str:
@@ -109,6 +110,15 @@ def yaml_load(path: Path):
         return yaml.safe_load(f)
 
 
+def cmd_validate_patterns(args: argparse.Namespace) -> int:
+    tree = model.load_tree(args.project)
+    issues = patterns.collect_pattern_issues(tree)
+    print(patterns.format_issues(issues))
+    if args.strict and issues:
+        return 1
+    return 0
+
+
 def cmd_show(args: argparse.Namespace) -> int:
     tree = model.load_tree(args.project)
     print(model.ascii_tree(tree))
@@ -198,7 +208,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
             return 1
         parent_id, node_id, title = args.rest[0], args.rest[1], args.rest[2]
         kind = args.rest[3] if len(args.rest) > 3 else "work"
-        status = args.rest[4] if len(args.rest) > 4 else "empty"
+        status = args.rest[4] if len(args.rest) > 4 else "weak"
         return _propose(
             args.project,
             lambda t: ops.apply_op(t, "add-child", [parent_id, node_id, title, kind, status]),
@@ -210,6 +220,15 @@ def cmd_propose(args: argparse.Namespace) -> int:
         data = json.loads(args.rest[1])
         return _propose(args.project, lambda t: ops.apply_op(t, "set-data", [node_id, data]), no_prompt=args.no_prompt)
 
+    if op == "set-all-weak":
+        preserve = list(args.rest)
+        return _propose(
+            args.project,
+            lambda t: ops.apply_op(t, "set-all-weak", preserve),
+            summary="Set all nodes to weak (preserving: " + (", ".join(preserve) or "strong") + ")",
+            no_prompt=args.no_prompt,
+        )
+
     if op == "set-status":
         node_id, status = args.rest[0], args.rest[1]
         return _propose(args.project, lambda t: ops.apply_op(t, "set-status", [node_id, status]), no_prompt=args.no_prompt)
@@ -218,6 +237,28 @@ def cmd_propose(args: argparse.Namespace) -> int:
         node_id = args.rest[0]
         notes = args.rest[1] if len(args.rest) > 1 else None
         return _propose(args.project, lambda t: ops.apply_op(t, "mark-stale", [node_id, notes]), no_prompt=args.no_prompt)
+
+    if op == "clear-stale":
+        node_id = args.rest[0]
+        return _propose(args.project, lambda t: ops.apply_op(t, "clear-stale", [node_id]), no_prompt=args.no_prompt)
+
+    if op == "rename":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> rename <node_id> <new_title>", file=sys.stderr)
+            return 1
+        node_id, title = args.rest[0], " ".join(args.rest[1:])
+        return _propose(args.project, lambda t: ops.apply_op(t, "rename", [node_id, title]), no_prompt=args.no_prompt)
+
+    if op == "reparent":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> reparent <node_id> <new_parent_id>", file=sys.stderr)
+            return 1
+        node_id, new_parent_id = args.rest[0], args.rest[1]
+        return _propose(
+            args.project,
+            lambda t: ops.apply_op(t, "reparent", [node_id, new_parent_id]),
+            no_prompt=args.no_prompt,
+        )
 
     if op == "include-meal":
         return _propose(args.project, lambda t: ops.apply_op(t, "include-meal", [args.rest[0]]), no_prompt=args.no_prompt)
@@ -247,10 +288,18 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Project tree CLI — propose, diff, apply")
-    parser.add_argument("command", choices=["show", "propose", "apply", "reject", "pending"])
+    parser.add_argument(
+        "command",
+        choices=["show", "propose", "apply", "reject", "pending", "validate-patterns"],
+    )
     parser.add_argument("project", help="Project name (folder under projects/)")
     parser.add_argument("operation", nargs="?", help="Propose operation name (or 'batch')")
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="Operation arguments")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="For validate-patterns: exit 1 if any issue found",
+    )
     parser.add_argument("--json", dest="json", default=None, help="Batch ops JSON")
     parser.add_argument("--file", dest="file", default=None, help="Batch ops JSON file")
     parser.add_argument(
@@ -263,6 +312,8 @@ def main(argv: list[str] | None = None) -> int:
     if not hasattr(args, "no_prompt"):
         args.no_prompt = False
 
+    if args.command == "validate-patterns":
+        return cmd_validate_patterns(args)
     if args.command == "show":
         return cmd_show(args)
     if args.command == "apply":

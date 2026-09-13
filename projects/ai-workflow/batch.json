@@ -1,0 +1,44 @@
+{
+  "summary": "Map daily AI coding workflow: loop stages, pain points, desired behavior, tooling gaps",
+  "ops": [
+    {"op": "add-group", "args": ["root", "daily-loop", "Daily loop (open Cursor → ship)"]},
+    {"op": "add-child", "args": ["daily-loop", "orient", "What should I work on today?", "work", "weak"]},
+    {"op": "add-child", "args": ["daily-loop", "understand", "Do I understand the problem?", "work", "weak"]},
+    {"op": "add-child", "args": ["daily-loop", "write-spec", "Write specs fast enough to cover the whole project", "work", "weak"]},
+    {"op": "add-child", "args": ["daily-loop", "review-spec", "Review specs in seconds, not hours", "work", "weak"]},
+    {"op": "add-child", "args": ["daily-loop", "implement", "Agent implements against approved spec", "work", "empty"]},
+
+    {"op": "add-group", "args": ["root", "pain-orient", "Pain: orient (what to work on)"]},
+    {"op": "add-child", "args": ["pain-orient", "no-mental-model", "No domain map when session starts", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-orient", "no-weak-signal", "Can't see which areas are weak or stale", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-orient", "too-many-tasks", "Too many possible tasks, no prioritization", "work", "empty"]},
+
+    {"op": "add-group", "args": ["root", "pain-understand", "Pain: understand (investigate weak nodes)"]},
+    {"op": "add-child", "args": ["pain-understand", "why-weak-unclear", "Weak node exists but why it's weak is unknown", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-understand", "investigation-adhoc", "Investigation is ad-hoc, not a repeatable ritual", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-understand", "domain-not-in-tree", "Domain knowledge lives in head, not in tree", "work", "empty"]},
+
+    {"op": "add-group", "args": ["root", "pain-write-spec", "Pain: write specs (the bottleneck)"]},
+    {"op": "add-child", "args": ["pain-write-spec", "cant-enumerate-verify", "Can't think of all VERIFY criteria agent needs", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-write-spec", "spec-too-slow", "Spec step eats the day — no time for other modules", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-write-spec", "spec-too-prose", "Specs drift into essays instead of done-criteria", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-write-spec", "decompose-hard", "Hard to chunk big problems (e.g. cement certs → validation layer)", "work", "empty"]},
+
+    {"op": "add-group", "args": ["root", "pain-review-spec", "Pain: review specs"]},
+    {"op": "add-child", "args": ["pain-review-spec", "review-slow", "Review still takes too long", "work", "empty"]},
+    {"op": "add-child", "args": ["pain-review-spec", "approve-unclear", "Unclear approve vs fix — no fast binary gate", "work", "empty"]},
+
+    {"op": "add-group", "args": ["root", "desired", "Desired behavior (target state)"]},
+    {"op": "add-child", "args": ["desired", "say-harden-x", "Say 'harden cement certificates' → AI navigates domain map", "work", "discussing"]},
+    {"op": "add-child", "args": ["desired", "pick-aspect", "Pick aspect (e.g. validation layer) from tree, not from memory", "work", "discussing"]},
+    {"op": "add-child", "args": ["desired", "spec-factory", "AI drafts specs; I approve/reject in seconds each", "work", "discussing"]},
+    {"op": "add-child", "args": ["desired", "deterministic-done", "Every spec has falsifiable VERIFY — agent executes flawlessly", "work", "discussing"]},
+
+    {"op": "add-group", "args": ["root", "tooling", "Tooling (this repo)"]},
+    {"op": "add-child", "args": ["tooling", "project-tree-skill", "project-tree — persistent map + weak signals", "work", "spec_ready"]},
+    {"op": "add-child", "args": ["tooling", "scope-contract-skill", "scope-contract — fast spec format + review", "work", "spec_ready"]},
+    {"op": "add-child", "args": ["tooling", "spec-discovery", "??? — AI helps enumerate VERIFY (missing)", "work", "empty"]},
+    {"op": "add-child", "args": ["tooling", "domain-tree-seeding", "??? — bootstrap domain map from codebase (missing)", "work", "empty"]},
+    {"op": "add-child", "args": ["tooling", "tree-viewer", "tree-viewer — visual orient at session start", "work", "empty"]}
+  ]
+}

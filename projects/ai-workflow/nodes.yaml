@@ -1,0 +1,160 @@
+# Project tree — managed by scripts/project_tree.py
+project: ai-workflow
+constraints:
+  philosophy:
+  - early-steps-compound
+  - tree-is-memory-not-chat
+  - done-means-falsifiable-verify
+  daily-loop:
+  - orient
+  - pick-weak-node
+  - investigate
+  - write-spec
+  - review-spec
+  - implement
+nodes:
+- id: root
+  title: AI Coding Workflow
+  kind: group
+  status: discussing
+  children:
+  - id: daily-loop
+    title: Daily loop (open Cursor → ship)
+    kind: group
+    status: discussing
+    children:
+    - id: orient
+      title: What should I work on today?
+      kind: work
+      status: weak
+    - id: understand
+      title: Do I understand the problem?
+      kind: work
+      status: weak
+    - id: write-spec
+      title: Write specs fast enough to cover the whole project
+      kind: work
+      status: weak
+    - id: review-spec
+      title: Review specs in seconds, not hours
+      kind: work
+      status: weak
+    - id: implement
+      title: Agent implements against approved spec
+      kind: work
+      status: empty
+  - id: pain-orient
+    title: 'Pain: orient (what to work on)'
+    kind: group
+    status: discussing
+    children:
+    - id: no-mental-model
+      title: No domain map when session starts
+      kind: work
+      status: empty
+    - id: no-weak-signal
+      title: Can't see which areas are weak or stale
+      kind: work
+      status: empty
+    - id: too-many-tasks
+      title: Too many possible tasks, no prioritization
+      kind: work
+      status: empty
+  - id: pain-understand
+    title: 'Pain: understand (investigate weak nodes)'
+    kind: group
+    status: discussing
+    children:
+    - id: why-weak-unclear
+      title: Weak node exists but why it's weak is unknown
+      kind: work
+      status: empty
+    - id: investigation-adhoc
+      title: Investigation is ad-hoc, not a repeatable ritual
+      kind: work
+      status: empty
+    - id: domain-not-in-tree
+      title: Domain knowledge lives in head, not in tree
+      kind: work
+      status: empty
+  - id: pain-write-spec
+    title: 'Pain: write specs (the bottleneck)'
+    kind: group
+    status: discussing
+    children:
+    - id: cant-enumerate-verify
+      title: Can't think of all VERIFY criteria agent needs
+      kind: work
+      status: empty
+    - id: spec-too-slow
+      title: Spec step eats the day — no time for other modules
+      kind: work
+      status: empty
+    - id: spec-too-prose
+      title: Specs drift into essays instead of done-criteria
+      kind: work
+      status: empty
+    - id: decompose-hard
+      title: Hard to chunk big problems (e.g. cement certs → validation layer)
+      kind: work
+      status: empty
+  - id: pain-review-spec
+    title: 'Pain: review specs'
+    kind: group
+    status: discussing
+    children:
+    - id: review-slow
+      title: Review still takes too long
+      kind: work
+      status: empty
+    - id: approve-unclear
+      title: Unclear approve vs fix — no fast binary gate
+      kind: work
+      status: empty
+  - id: desired
+    title: Desired behavior (target state)
+    kind: group
+    status: discussing
+    children:
+    - id: say-harden-x
+      title: Say 'harden cement certificates' → AI navigates domain map
+      kind: work
+      status: discussing
+    - id: pick-aspect
+      title: Pick aspect (e.g. validation layer) from tree, not from memory
+      kind: work
+      status: discussing
+    - id: spec-factory
+      title: AI drafts specs; I approve/reject in seconds each
+      kind: work
+      status: discussing
+    - id: deterministic-done
+      title: Every spec has falsifiable VERIFY — agent executes flawlessly
+      kind: work
+      status: discussing
+  - id: tooling
+    title: Tooling (this repo)
+    kind: group
+    status: discussing
+    children:
+    - id: project-tree-skill
+      title: project-tree — persistent map + weak signals
+      kind: work
+      status: spec_ready
+    - id: scope-contract-skill
+      title: scope-contract — fast spec format + review
+      kind: work
+      status: spec_ready
+    - id: spec-discovery
+      title: ??? — AI helps enumerate VERIFY (missing)
+      kind: work
+      status: empty
+    - id: domain-tree-seeding
+      title: ??? — bootstrap domain map from codebase (missing)
+      kind: work
+      status: empty
+    - id: tree-viewer
+      title: tree-viewer — visual orient at session start
+      kind: work
+      status: empty
+updated: '2026-09-13'

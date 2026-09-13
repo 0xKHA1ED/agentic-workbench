@@ -37,7 +37,14 @@ class TreeHandler(SimpleHTTPRequestHandler):
             return
         if self.path == "/":
             self.path = "/index.html"
+        # Strip cache-bust query string (e.g. styles.css?v=2)
+        if "?" in self.path:
+            self.path = self.path.split("?", 1)[0]
         return super().do_GET()
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def _list_projects(self) -> list[str]:
         if not PROJECTS_DIR.exists():

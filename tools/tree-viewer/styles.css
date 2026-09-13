@@ -8,6 +8,8 @@
   --accent-soft: #e8f0f6;
   --stale: #b45309;
   --stale-bg: #fffbeb;
+  --weak: #be123c;
+  --weak-bg: #fff1f2;
   --radius: 10px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -156,6 +158,17 @@ button:hover {
   background: var(--stale-bg);
 }
 
+.node-row[data-status="weak"],
+.node.node-weak > .node-row {
+  background: var(--weak-bg);
+  box-shadow: inset 3px 0 0 var(--weak);
+}
+
+.node-row[data-status="weak"]:hover,
+.node.node-weak > .node-row:hover {
+  background: #ffe4e6;
+}
+
 .toggle {
   width: 1.25rem;
   color: var(--muted);
@@ -206,10 +219,16 @@ button:hover {
 }
 
 .badge-status-empty { background: #f3f4f6; color: #6b7280; }
+.badge-status-weak {
+  background: #fda4af;
+  color: #9f1239;
+  border: 1px solid #f43f5e;
+}
 .badge-status-discussing { background: #dbeafe; color: #1d4ed8; }
 .badge-status-spec_ready,
 .badge-status-spec_approved { background: #e0e7ff; color: #4338ca; }
 .badge-status-tests_locked { background: #fef3c7; color: #b45309; }
+.badge-status-strong { background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; }
 .badge-status-done { background: #d1fae5; color: #047857; }
 
 .badge-stale {

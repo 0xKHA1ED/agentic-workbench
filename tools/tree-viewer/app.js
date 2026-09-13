@@ -23,6 +23,7 @@ function renderNode(node, depth = 0) {
   const children = node.children || [];
   const hasChildren = children.length > 0;
   const stale = node.stale ? " stale" : "";
+  const weak = node.status === "weak" ? " node-weak" : "";
   const statusClass = `badge-status-${(node.status || "empty").replace(/-/g, "_")}`;
 
   const childHtml = hasChildren
@@ -30,8 +31,8 @@ function renderNode(node, depth = 0) {
     : "";
 
   return `
-    <div class="node${stale}" data-depth="${depth}">
-      <div class="node-row" data-toggle>
+    <div class="node${stale}${weak}" data-depth="${depth}">
+      <div class="node-row" data-toggle data-status="${node.status || "empty"}">
         <span class="toggle${hasChildren ? "" : " empty"}">${hasChildren ? "▼" : ""}</span>
         <div class="node-body">
           <div class="node-title-line">

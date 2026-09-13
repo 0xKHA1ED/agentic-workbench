@@ -1,3 +1,8 @@
+# Local practice sandboxes — mutate freely, not committed
+projects/practice/
+projects/tik/
+sandbox/
+
 __pycache__/
 *.py[cod]
 .Python

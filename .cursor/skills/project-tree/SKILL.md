@@ -6,6 +6,10 @@ disable-model-invocation: true
 
 # Project Tree (programmatic)
 
+**AI authors the tree. CLI persists it. User approves.**
+
+The tree is a **work map** (concerns, pain, status) — not a filesystem mirror. At 500k LOC, keep it coarse (30–200 nodes). Leaves use `data.pattern` as drill-down pointers.
+
 **AI must never edit `nodes.yaml` or `nodes.yaml.proposed` directly.** All mutations go through the CLI.
 
 Announce: "Using project-tree skill."
@@ -18,25 +22,83 @@ python scripts/project_tree.py <command> <project> [args]
 
 Install once: `pip install -r requirements.txt`
 
+## Who does what
+
+| Role | Responsibility |
+|------|----------------|
+| **AI** | Read docs/code; infer concerns; propose structure; batch ops; attach `data.pattern` / `data.pain` |
+| **CLI** | Diff, persist, status, validate patterns — never decide semantics |
+| **User** | Approve diffs; promote `weak` → `strong`; pick today's work |
+
+**Never** rebuild the whole tree. **Never** auto-apply. **Never** set `strong` for the user.
+
+### Bootstrap (new project)
+
+1. Read README / ARCHITECTURE / user intent
+2. Propose **2–3 levels**, ~20–40 nodes max — concerns, not every file
+3. One `batch` diff → user y/n
+4. Drill down **only** when user picks a weak branch
+
+### Scripts are lint, not authors
+
+```bash
+python scripts/project_tree.py validate-patterns <project>
+python scripts/project_tree.py validate-patterns <project> --strict
+```
+
+Use after moves/renames in codebase — fix `data.pattern` via `set-data`, not by regenning the tree.
+
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
 | `show <project>` | ASCII tree + pending warning |
-| `propose <project> <op> [args]` | Compute change, write `.proposed`, print **diff**, wait for user |
-| `pending <project>` | Re-show diff if user asks |
-| `apply <project>` | **Only after user says approve** |
-| `reject <project>` | **Only after user says reject** |
+| `validate-patterns <project>` | Check `data.pattern` paths resolve |
+| `propose <project> <op> [args]` | Compute change, write `.proposed`, print **diff** |
+| `pending <project>` | Re-show diff |
+| `apply <project>` | **Only after user approves** |
+| `reject <project>` | Discard pending proposal |
 
-## Multi-aspect messages (long discussions)
+## Status model
 
-**Memory = `nodes.yaml`, not chat.** After each approved apply, facts live in the tree. Month-later sessions: `show` first, then continue.
+**Default: everything is `weak`.** Only the user promotes nodes to `strong`.
+
+| Status | Who sets it | Meaning |
+|--------|-------------|---------|
+| `weak` | default on new nodes | Not hardened — fair game for today's work |
+| `strong` | **user only** | User trusts this area; skip unless revisiting |
+| `spec_ready` | workflow | Claims/spec drafted |
+| `spec_approved` | workflow | Scope contract approved |
+| `done` | workflow | VERIFY passed after implementation |
+
+Never set `strong` for the user. Pick work from `weak` nodes.
+
+## Dynamic tree (nodes enter, die, move)
+
+| Situation | Op | Example |
+|-----------|-----|---------|
+| New concern | `add-group` / `add-child` | batch with siblings |
+| Area obsolete | `mark-stale` | `mark-stale old-api superseded by v2` |
+| Area revived | `clear-stale` | after refactor completes |
+| Wrong grouping | `reparent` | `reparent validation-layer formats` |
+| Rename label | `rename` | `rename fmt-leap "The leap (distance)"` |
+| Code moved | `set-data` | update `pattern` only — keep node id |
+| User trusts area | `set-status` | `set-status validation-layer strong` |
+
+**Prefer surgical patches over full re-seed.** Preserve `strong` nodes across changes.
+
+### mark-stale vs delete
+
+No delete op yet — `mark-stale` keeps history. Stale nodes stay visible in viewer (amber). User can `clear-stale` when area returns.
+
+## Multi-aspect messages
+
+**Memory = `nodes.yaml`, not chat.** After each approved apply, facts live in the tree.
 
 When user mentions **multiple things in one message**:
 1. Parse all intents (constraints + new nodes + status changes…)
-2. Ask **only** if something is ambiguous or contradictory — not one question per fact
+2. Ask **only** if ambiguous — not one question per fact
 3. Build **one batch** → **one diff** → **one approve**
-4. If some items are unclear, propose the clear subset + ask about the rest in ≤2 questions
 
 ```bash
 python scripts/project_tree.py propose my-feature batch --json '{
@@ -44,55 +106,52 @@ python scripts/project_tree.py propose my-feature batch --json '{
   "ops": [
     {"op": "add-group", "args": ["root", "auth", "Authentication"]},
     {"op": "set-constraint", "args": ["must_use", "existing-jwt-middleware"]},
-    {"op": "add-child", "args": ["auth", "login-endpoint", "POST /login", "work", "empty"]}
+    {"op": "add-child", "args": ["auth", "login-endpoint", "POST /login", "work"]}
   ]
 }'
 ```
 
-Or write ops to `projects/<name>/batch.json` and use `--file`.
-
-**Do not** run five separate proposes for five facts in one message — batch them.
-
-Across **many sessions**: each approve commits state; never rely on chat history for facts already in tree.
+Or `--file projects/<name>/batch.json`. **Do not** run five separate proposes for five facts.
 
 ## Propose operations
 
 | Operation | Args | Example |
 |-----------|------|---------|
-| `batch` | `--json` or `--file` | Multi-op atomic proposal (see above) |
-| `set-constraint` | key val [val...] | `propose my-feature set-constraint layer domain-only` |
-| `add-group` | parent_id id title | `propose my-feature add-group root payments Payments` |
-| `add-child` | parent id title [kind] [status] | `propose my-feature add-child payments retry-handler Retry handler work empty` |
-| `set-data` | node_id '{"k":"v"}'` | `propose my-feature set-data auth '{"pattern":"src/auth/middleware.ts"}'` |
-| `set-status` | node_id status | `propose my-feature set-status retry-handler spec_ready` |
-| `mark-stale` | node_id [notes] | `propose my-feature mark-stale old-approach superseded` |
-
-Add domain-specific composite ops in `ops.py` when a pattern repeats.
+| `batch` | `--json` or `--file` | Multi-op atomic proposal |
+| `set-constraint` | key val [val...] | `set-constraint codebase sandbox/tik` |
+| `add-group` | parent_id id title | `add-group root payments Payments` |
+| `add-child` | parent id title [kind] [status] | `add-child payments retry Retry handler work` |
+| `set-data` | node_id '{"k":"v"}'` | `set-data auth '{"pattern":"src/auth/**"}'` |
+| `set-status` | node_id status | `set-status retry spec_ready` |
+| `set-all-weak` | [preserve...] | all → weak except `strong` |
+| `mark-stale` | node_id [notes] | `mark-stale old-approach superseded` |
+| `clear-stale` | node_id | `clear-stale old-approach` |
+| `rename` | node_id title | `rename fmt-leap The leap` |
+| `reparent` | node_id new_parent_id | `reparent validation-layer formats` |
 
 ## Workflow (mandatory)
 
-1. `show` — orient user
-2. Discuss — gather **criteria and structure**, not AI-generated content (requirements, feature names, etc. come from user unless asked)
-3. **`propose`** — run CLI; script shows diff then **`Apply this proposal? [y/n]`** in terminal
-4. **AI uses `--no-prompt`** — never `apply`/`reject` for the user; tell them to run propose in terminal or run `apply`/`reject` themselves
-5. User types **y** or **n** in terminal (or runs apply/reject manually)
-6. Never edit yaml directly; never invent user-owned content (ideas, names, requirements) without explicit ask
+1. `show` or tree viewer — orient
+2. Discuss — structure from user + codebase; names/requirements from user unless asked
+3. **`propose ... --no-prompt`** — AI runs diff only
+4. User runs propose in terminal (interactive y/n) or `apply`/`reject`
+5. Never `apply`/`reject` for the user
 
 ```bash
-# User runs in terminal (interactive y/n):
+# User (interactive y/n):
 python scripts/project_tree.py propose my-feature batch --file projects/my-feature/batch.json
 
-# AI runs (diff only, leaves pending):
+# AI (diff only):
 python scripts/project_tree.py propose my-feature batch --file ... --no-prompt
 ```
 
-If proposal pending and user wants changes, `reject` first then new `propose`.
+If proposal pending and user wants changes: `reject` first, then new `propose`.
 
 ## Conversation
 
-- Pick node from `show` output; don't re-ask facts already in tree/constraints
-- `work` nodes ready for specs → `/scope-contract`, save to `projects/<name>/specs/<id>.md`, then `propose set-status <id> spec_approved` (with spec path via `set-data` if needed)
+- Pick node from tree; don't re-ask facts in `data` / constraints
+- `work` nodes → `/spec-discovery` → `projects/<name>/specs/<id>.md` → `set-status spec_approved`
 
 ## Adding new operations
 
-If no CLI op fits, extend `scripts/project_tree/ops.py` + `cli.py` — do not edit yaml by hand.
+Extend `scripts/project_tree/ops.py` + `cli.py` — do not edit yaml by hand.
