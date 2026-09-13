@@ -21,7 +21,9 @@ sys.path.insert(0, str(PACKAGE_ROOT / "scripts"))
 
 import workflow_mcp
 from project_tree import fragments, model
-from project_tree.model import list_projects
+from project_tree.model import find_node_in_tree, list_projects, load_tree
+from project_tree.fragments import compose_tree
+from project_tree.verify_runner import run_verification, verification_spec_from_node_data
 from spec_discovery.model import save_document
 
 UI_DIR = PACKAGE_ROOT / "tools" / "tree-viewer"
@@ -329,7 +331,27 @@ class TreeHandler(SimpleHTTPRequestHandler):
             self._error_response(400, "Missing required fields: 'project', 'node_id'")
             return
         try:
-            res = workflow_mcp.workflow_execute_verification(project, node_id)
+            raw_tree = load_tree(project)
+            composed = compose_tree(raw_tree, project)
+            node = find_node_in_tree(composed, node_id)
+            if node is None:
+                raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+
+            node_data = node.get("data") or {}
+            spec = verification_spec_from_node_data(node_data)
+            repo_root = getattr(model, "REPO_ROOT", None) or model.host_root()
+            timeout = float(data.get("timeout", 30.0))
+            result = run_verification(spec, Path(repo_root), timeout=timeout)
+            res = {
+                "status": result["status"],
+                "project": project,
+                "node_id": node_id,
+                "command": result["command"],
+                "exit_code": result["exit_code"],
+                "stdout": result["stdout"],
+                "stderr": result["stderr"],
+                "duration_seconds": result["duration_seconds"],
+            }
             self._json_response(res)
         except FileNotFoundError as exc:
             self._error_response(404, str(exc))

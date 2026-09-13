@@ -26,6 +26,7 @@ from project_tree.model import (
     list_pending_proposals,
     load_tree,
 )
+from project_tree.verify_runner import run_verification, verification_spec_from_node_data
 from spec_discovery.model import (
     VALID_KINDS,
     claims_dir,
@@ -690,59 +691,23 @@ def workflow_execute_verification(
         raise ValueError(f"Node '{node_id}' not found in project '{project}'")
 
     data = node.get("data") or {}
-    command = None
-
-    verif = data.get("verification")
-    if isinstance(verif, dict):
-        command = verif.get("command") or verif.get("cmd")
-    elif isinstance(verif, str) and verif.strip():
-        command = verif.strip()
-
-    if not command:
-        command = data.get("check_command") or data.get("test_command")
-
-    if not command or not str(command).strip():
-        raise ValueError(f"Node '{node_id}' has no verification command configured in data")
-
-    command = str(command).strip()
-    repo_root = getattr(model, "REPO_ROOT", None) or model.host_root()
-
-    start_time = time.time()
     try:
-        proc = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            cwd=str(repo_root),
-            timeout=float(timeout),
-        )
-        duration_seconds = round(time.time() - start_time, 3)
-        exit_code = proc.returncode
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-    except subprocess.TimeoutExpired as exc:
-        duration_seconds = round(time.time() - start_time, 3)
-        exit_code = -1
-        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        stderr = f"Command timed out after {timeout} seconds: {exc}"
-    except Exception as exc:
-        duration_seconds = round(time.time() - start_time, 3)
-        exit_code = -1
-        stdout = ""
-        stderr = f"Execution error: {exc}"
+        spec = verification_spec_from_node_data(data)
+    except ValueError as exc:
+        raise ValueError(f"Node '{node_id}' has no verification command configured in data") from exc
 
-    status = "passed" if exit_code == 0 else "failed"
+    repo_root = getattr(model, "REPO_ROOT", None) or model.host_root()
+    result = run_verification(spec, Path(repo_root), timeout=float(timeout))
 
     return {
-        "status": status,
+        "status": result["status"],
         "project": project,
         "node_id": node_id,
-        "command": command,
-        "exit_code": exit_code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "duration_seconds": duration_seconds,
+        "command": result["command"],
+        "exit_code": result["exit_code"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "duration_seconds": result["duration_seconds"],
     }
 
 
