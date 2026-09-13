@@ -2,7 +2,7 @@
   "mcpServers": {
     "ai-workflow": {
       "command": "python3",
-      "args": ["ai-workflow/scripts/workflow_mcp.py"],
+      "args": ["scripts/workflow_mcp.py"],
       "env": { "PYTHONUNBUFFERED": "1" }
     }
   }

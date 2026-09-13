@@ -686,6 +686,18 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
         self.assertIn("project", mut_props)
         self.assertIn("target_node_id", mut_props)
         self.assertIn("operation", mut_props)
+        self.assertEqual(
+            mut_props["operation"]["enum"],
+            [
+                "add_child",
+                "set_data",
+                "set_status",
+                "mark_stale",
+                "clear_stale",
+                "reparent",
+                "attach_subtree",
+            ],
+        )
         self.assertIn("payload", mut_props)
 
         claim_props = tools["workflow_stage_contract_claims"]["inputSchema"]["properties"]
@@ -870,6 +882,92 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
                 self.assertEqual(data["status"], "staged")
                 self.assertIn("stale", data["diff"])
                 self.assertIn("Dependencies were bumped", data["diff"])
+
+    def test_propose_tree_mutation_clear_stale(self):
+        """Test workflow_propose_tree_mutation with clear_stale operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "worker",
+                        "title": "Worker",
+                        "kind": "work",
+                        "status": "strong",
+                        "stale": True,
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "worker",
+                        "operation": "clear_stale",
+                        "payload": {},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertIn("-  stale: true", data["diff"])
+
+    def test_propose_tree_mutation_reparent(self):
+        """Test workflow_propose_tree_mutation with reparent operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "parent1",
+                        "title": "Parent 1",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [
+                            {
+                                "id": "child",
+                                "title": "Child Node",
+                                "kind": "work",
+                                "status": "weak",
+                            }
+                        ],
+                    },
+                    {
+                        "id": "parent2",
+                        "title": "Parent 2",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [],
+                    },
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "child",
+                        "operation": "reparent",
+                        "payload": {"new_parent_id": "parent2"},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertIn("+", data["diff"])
 
     def test_propose_tree_mutation_fragment(self):
         """Test workflow_propose_tree_mutation targeting a node in a fragment file."""
@@ -1283,8 +1381,11 @@ class TestMCPPipelineE2E(unittest.TestCase):
 
             def _read_response() -> dict:
                 line = proc.stdout.readline()
-                self.assertTrue(line, "Expected JSON-RPC response from server stdout, but got EOF")
+                if not line:
+                    err = proc.stderr.read()
+                    self.fail(f"Expected JSON-RPC response from server stdout, but got EOF. Stderr: {err}")
                 return json.loads(line)
+
 
             # 1. initialize
             _send_request({

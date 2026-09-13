@@ -552,7 +552,7 @@ def workflow_propose_tree_mutation(
         proposed_tree = tree_ops.attach_subtree(target_tree, target_node_id, child_id, title, fragment_path, kind)
     else:
         raise ValueError(
-            f"Unsupported operation '{operation}': must be one of 'add_child', 'set_data', 'set_status', 'mark_stale'"
+            f"Unsupported operation '{operation}': must be one of 'add_child', 'set_data', 'set_status', 'mark_stale', 'clear_stale', 'reparent', 'attach_subtree'"
         )
 
     target_label = fragment_rel if fragment_rel else "nodes.yaml"
@@ -806,7 +806,15 @@ def register_builtin_tools(server: MCPServer) -> None:
                 },
                 "operation": {
                     "type": "string",
-                    "enum": ["add_child", "set_data", "set_status", "mark_stale"],
+                    "enum": [
+                        "add_child",
+                        "set_data",
+                        "set_status",
+                        "mark_stale",
+                        "clear_stale",
+                        "reparent",
+                        "attach_subtree",
+                    ],
                     "description": "Mutation operation type",
                 },
                 "payload": {
