@@ -1,0 +1,261 @@
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --text: #1c1e26;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --accent: #3d6b8c;
+  --accent-soft: #e8f0f6;
+  --stale: #b45309;
+  --stale-bg: #fffbeb;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.app {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.header {
+  margin-bottom: 1.5rem;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.meta {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+select,
+button {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+select {
+  padding: 0.45rem 0.75rem;
+  min-width: 10rem;
+}
+
+button {
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--accent-soft);
+  border-color: #c5d5e3;
+}
+
+.pending-banner {
+  margin-top: 1rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--stale-bg);
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  color: #92400e;
+  font-size: 0.875rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.constraints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.chip-muted {
+  background: #f3f4f6;
+  color: var(--muted);
+}
+
+.tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.5rem 0;
+}
+
+.node {
+  border-bottom: 1px solid var(--border);
+}
+
+.node:last-child {
+  border-bottom: none;
+}
+
+.node-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.node-row:hover {
+  background: #fafbfc;
+}
+
+.node.stale > .node-row {
+  background: var(--stale-bg);
+}
+
+.toggle {
+  width: 1.25rem;
+  color: var(--muted);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.toggle.empty {
+  visibility: hidden;
+}
+
+.node-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.node-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.node-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.node-id {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+}
+
+.badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+}
+
+.badge-kind {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.badge-status-empty { background: #f3f4f6; color: #6b7280; }
+.badge-status-discussing { background: #dbeafe; color: #1d4ed8; }
+.badge-status-spec_ready,
+.badge-status-spec_approved { background: #e0e7ff; color: #4338ca; }
+.badge-status-tests_locked { background: #fef3c7; color: #b45309; }
+.badge-status-done { background: #d1fae5; color: #047857; }
+
+.badge-stale {
+  background: #ffedd5;
+  color: var(--stale);
+}
+
+.node-notes {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.node-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.data-tag {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #374151;
+}
+
+.data-tag strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.children {
+  margin-left: 1.25rem;
+  border-left: 2px solid var(--border);
+}
+
+.children.collapsed {
+  display: none;
+}
+
+.error {
+  padding: 2rem;
+  text-align: center;
+  color: #b91c1c;
+}

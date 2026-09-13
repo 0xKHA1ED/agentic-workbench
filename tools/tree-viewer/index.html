@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project Tree</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <h1 id="project-title">Project Tree</h1>
+        <div class="header-actions">
+          <select id="project-select" aria-label="Project"></select>
+          <button id="refresh-btn" type="button" title="Refresh">↻</button>
+        </div>
+      </div>
+      <p class="meta" id="meta"></p>
+      <div id="pending-banner" class="pending-banner hidden" role="status">
+        Pending proposal — approve or reject in terminal before it appears here.
+      </div>
+      <div id="constraints" class="constraints"></div>
+    </header>
+    <main id="tree" class="tree" aria-label="Project tree"></main>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
