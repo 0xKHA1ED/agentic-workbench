@@ -248,11 +248,79 @@ class TestMCPProtocolServer(unittest.TestCase):
 
     def test_module_level_register_tool(self):
         """Test module-level register_tool registers on default_server."""
+        original_tools = dict(workflow_mcp.default_server.tools)
+        self.addCleanup(lambda: setattr(workflow_mcp.default_server, "tools", original_tools))
+
         @register_tool("mod_tool", "Module level tool")
         def mod_handler(args):
             return "ok"
 
         self.assertIn("mod_tool", workflow_mcp.default_server.tools)
+
+    def test_tools_call_single_named_parameter(self):
+        """Test tool with a single named parameter receives argument value, not dict."""
+        received_arg = {}
+
+        @self.server.register_tool(name="get_node", description="Get node by ID")
+        def get_node(node_id: str):
+            received_arg["val"] = node_id
+            return f"Node {node_id}"
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {"name": "get_node", "arguments": {"node_id": "root-node"}},
+        }
+        response = self.server.handle_message(request)
+        self.assertIsNotNone(response)
+        self.assertEqual(received_arg.get("val"), "root-node")
+        self.assertIsInstance(received_arg.get("val"), str)
+        self.assertEqual(
+            response.get("result", {}).get("content"),
+            [{"type": "text", "text": "Node root-node"}],
+        )
+
+    def test_tools_call_internal_type_error_not_masked(self):
+        """Test TypeError inside handler execution body is preserved and not masked into parameter mismatch."""
+        @self.server.register_tool(name="calc_fail", description="Fails with TypeError inside body")
+        def calc_fail(x: int, y: int):
+            # Explicit TypeError inside handler body
+            return x + "not_an_int"
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {"name": "calc_fail", "arguments": {"x": 10, "y": 20}},
+        }
+        response = self.server.handle_message(request)
+        self.assertIsNotNone(response)
+        result = response.get("result", {})
+        self.assertTrue(result.get("isError"))
+        err_msg = result.get("content", [{}])[0].get("text", "")
+        self.assertIn("unsupported operand type", err_msg)
+        self.assertNotIn("missing a required argument", err_msg)
+
+    def test_tools_call_default_arguments(self):
+        """Test tool handler with default arguments has defaults populated."""
+        @self.server.register_tool(name="orient_default", description="Orient with defaults")
+        def orient_default(project: str, filter_kind: str = "weak"):
+            return f"Project: {project}, Filter: {filter_kind}"
+
+        request = {
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {"name": "orient_default", "arguments": {"project": "meta"}},
+        }
+        response = self.server.handle_message(request)
+        self.assertIsNotNone(response)
+        result = response.get("result", {})
+        self.assertEqual(
+            result.get("content"),
+            [{"type": "text", "text": "Project: meta, Filter: weak"}],
+        )
 
     def test_run_stdio_server(self):
         """Test run_stdio_server reads newline-delimited JSON and writes to stdout."""

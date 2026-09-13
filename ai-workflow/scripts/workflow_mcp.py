@@ -220,19 +220,33 @@ class MCPServer:
 
         try:
             sig = inspect.signature(handler)
-            params = list(sig.parameters.values())
+            bound = None
 
-            # If handler expects 1 argument or has single positional param, pass arguments dict
-            if len(params) == 1 and params[0].kind in (
-                inspect.Parameter.POSITIONAL_ONLY,
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            ):
-                res = handler(arguments)
-            else:
-                try:
-                    res = handler(**arguments)
-                except TypeError:
-                    res = handler(arguments)
+            # Attempt keyword binding first
+            try:
+                bound = sig.bind(**arguments)
+            except TypeError:
+                # If keyword binding fails, check if handler expects a single dictionary/generic parameter
+                if len(sig.parameters) == 1:
+                    param = next(iter(sig.parameters.values()))
+                    if (
+                        param.annotation in (dict, Dict)
+                        or (
+                            param.name not in arguments
+                            and param.annotation in (inspect.Parameter.empty, Any)
+                        )
+                    ):
+                        try:
+                            bound = sig.bind(arguments)
+                        except TypeError:
+                            pass
+
+            # If still not bound, re-bind with kwargs to raise clear signature TypeError
+            if bound is None:
+                bound = sig.bind(**arguments)
+
+            bound.apply_defaults()
+            res = handler(*bound.args, **bound.kwargs)
 
             # Format tool result
             if isinstance(res, dict) and "content" in res:
