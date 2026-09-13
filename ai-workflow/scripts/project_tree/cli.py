@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import stat
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
+import decay_hook
 from . import decay
 from . import fragments
 from . import model
@@ -215,6 +217,55 @@ def cmd_decay_scan(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2))
+    return 0
+
+
+def _git_hooks_dir() -> Path:
+    repo_root = model.REPO_ROOT
+    git_dir = repo_root / ".git"
+    if git_dir.is_file():
+        try:
+            git_dir = Path(git_dir.read_text(encoding="utf-8").split(":", 1)[1].strip())
+            if not git_dir.is_absolute():
+                git_dir = repo_root / git_dir
+        except (OSError, IndexError):
+            pass
+    return git_dir / "hooks"
+
+
+def _decay_hook_block() -> str:
+    hook_script = (model.PACKAGE_ROOT / "scripts" / "decay_hook.py").resolve()
+    python = sys.executable
+    return (
+        f"{decay_hook.HOOK_MARKER_START}\n"
+        f'"{python}" "{hook_script}"\n'
+        f"{decay_hook.HOOK_MARKER_END}\n"
+    )
+
+
+def cmd_install_decay_hook(args: argparse.Namespace) -> int:
+    hooks_dir = _git_hooks_dir()
+    if not hooks_dir.parent.exists():
+        print(f"Error: not a git repository: {model.REPO_ROOT}", file=sys.stderr)
+        return 1
+
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    hook_path = hooks_dir / "post-commit"
+    block = _decay_hook_block()
+
+    existing = ""
+    if hook_path.exists():
+        existing = hook_path.read_text(encoding="utf-8")
+        if decay_hook.HOOK_MARKER_START in existing:
+            print(f"Decay hook already installed at {hook_path}")
+            return 0
+
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+
+    hook_path.write_text(existing + block, encoding="utf-8")
+    hook_path.chmod(hook_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    print(f"Installed decay post-commit hook at {hook_path}")
     return 0
 
 
@@ -527,9 +578,15 @@ def main(argv: list[str] | None = None) -> int:
             "compose",
             "list-fragments",
             "decay-scan",
+            "install-decay-hook",
         ],
     )
-    parser.add_argument("project", help="Project name (meta, examples/*, or host projects/*)")
+    parser.add_argument(
+        "project",
+        nargs="?",
+        default=None,
+        help="Project name (meta, examples/*, or host projects/*)",
+    )
     parser.add_argument("operation", nargs="?", help="Propose operation name (or 'batch')")
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="Operation arguments")
     parser.add_argument(
@@ -578,6 +635,13 @@ def main(argv: list[str] | None = None) -> int:
         args.no_prompt = False
     if not hasattr(args, "dry_run"):
         args.dry_run = False
+
+    if args.command == "install-decay-hook":
+        return cmd_install_decay_hook(args)
+
+    if not args.project:
+        print(f"Error: {args.command} requires a project name.", file=sys.stderr)
+        return 1
 
     if args.command == "decay-scan":
         return cmd_decay_scan(args)

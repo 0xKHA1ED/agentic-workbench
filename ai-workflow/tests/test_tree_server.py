@@ -352,6 +352,19 @@ class TestTreeServerRestApi(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertIn("error", data)
 
+    def test_post_decay_scan_success(self):
+        with patch("tree_server.scan_decay", return_value={"scanned": 2, "decayed": 0, "refreshed": 1, "nodes": []}):
+            status, data = self._post("/api/decay-scan", {"project": "test-proj", "dry_run": False})
+        self.assertEqual(status, 200)
+        self.assertEqual(data["scanned"], 2)
+        self.assertEqual(data["decayed"], 0)
+        self.assertEqual(data["refreshed"], 1)
+
+    def test_post_decay_scan_missing_project(self):
+        status, data = self._post("/api/decay-scan", {"dry_run": False})
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
+
     def test_post_mutate_add_child(self):
         status, data = self._post(
             "/api/mutate",

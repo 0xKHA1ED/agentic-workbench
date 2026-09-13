@@ -371,7 +371,19 @@ class TestCockpitE2E(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertIn("error", data)
 
-    def test_13_sse_detects_file_change(self):
+    def test_13_decay_scan_endpoint(self):
+        """Decay scan endpoint returns scan summary for a project."""
+        status, data = self._post_json(
+            "/api/decay-scan",
+            {"project": self._proj_name, "dry_run": True},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("scanned", data)
+        self.assertIn("decayed", data)
+        self.assertIn("refreshed", data)
+        self.assertIn("nodes", data)
+
+    def test_14_sse_detects_file_change(self):
         """SSE stream fires tree_changed when nodes.yaml is modified."""
         import http.client
 

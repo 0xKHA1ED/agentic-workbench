@@ -26,6 +26,7 @@ from project_tree.model import (
     list_pending_proposals,
     load_tree,
 )
+from project_tree.decay import scan_decay
 from project_tree.verify_runner import run_verification, verification_spec_from_node_data
 from spec_discovery.model import (
     VALID_KINDS,
@@ -678,6 +679,14 @@ def workflow_stage_contract_claims(
     }
 
 
+def workflow_decay_scan(
+    project: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Scan a project for verified_strong pattern drift and decay stale nodes."""
+    return scan_decay(project, dry_run=bool(dry_run))
+
+
 def workflow_execute_verification(
     project: str,
     node_id: str,
@@ -859,6 +868,27 @@ def register_builtin_tools(server: MCPServer) -> None:
             "required": ["project", "node_id"],
         },
         handler=workflow_execute_verification,
+    )
+
+    server.register_tool(
+        name="workflow_decay_scan",
+        description="Scan verified_strong nodes for pattern fingerprint drift and decay or refresh them.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Report decay actions without writing nodes.yaml",
+                },
+            },
+            "required": ["project"],
+        },
+        handler=workflow_decay_scan,
     )
 
 

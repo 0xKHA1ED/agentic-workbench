@@ -23,6 +23,7 @@ import workflow_mcp
 from project_tree import fragments, model
 from project_tree.model import find_node_in_tree, list_projects, load_tree
 from project_tree.fragments import compose_tree
+from project_tree.decay import scan_decay
 from project_tree.verify_runner import run_verification, verification_spec_from_node_data
 from spec_discovery.model import save_document
 
@@ -138,6 +139,9 @@ class TreeHandler(SimpleHTTPRequestHandler):
             return
         if clean_path == "/api/verify":
             self._handle_verify(data)
+            return
+        if clean_path == "/api/decay-scan":
+            self._handle_decay_scan(data)
             return
         if clean_path == "/api/mutate":
             self._handle_mutate(data)
@@ -360,6 +364,20 @@ class TreeHandler(SimpleHTTPRequestHandler):
             self._error_response(status, str(exc))
         except Exception as exc:
             self._error_response(500, f"Verification execution error: {exc}")
+
+    def _handle_decay_scan(self, data: dict) -> None:
+        project = data.get("project")
+        if not project or not str(project).strip():
+            self._error_response(400, "Missing required field 'project'")
+            return
+        dry_run = bool(data.get("dry_run", False))
+        try:
+            result = scan_decay(str(project), dry_run=dry_run)
+            self._json_response(result)
+        except FileNotFoundError as exc:
+            self._error_response(404, str(exc))
+        except Exception as exc:
+            self._error_response(500, f"Decay scan error: {exc}")
 
     def _handle_mutate(self, data: dict) -> None:
         project = data.get("project")

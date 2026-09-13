@@ -710,7 +710,50 @@ async function rejectProposal(fragment) {
   }
 }
 
-// 10. VERIFICATION RUNNER WIDGET
+// 10. DECAY SCAN WIDGET
+async function runDecayScan() {
+  if (!state.currentProject) {
+    logActivity("Please select a project before scanning for decay.", "warn");
+    return;
+  }
+
+  const project = state.currentProject;
+  const scanBtn = document.getElementById("btn-scan-decay");
+  if (scanBtn) scanBtn.disabled = true;
+  logActivity(`[decay] Starting decay scan for project "${project}"...`, "info");
+
+  try {
+    const res = await fetch("/api/decay-scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project, dry_run: false }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      logActivity(
+        `[decay] Scan error for "${project}": ${data.error || res.statusText}`,
+        "error"
+      );
+      return;
+    }
+
+    const scanned = data.scanned != null ? data.scanned : 0;
+    const decayed = data.decayed != null ? data.decayed : 0;
+    const refreshed = data.refreshed != null ? data.refreshed : 0;
+    logActivity(
+      `[decay] Project "${project}": scanned ${scanned}, decayed ${decayed}, refreshed ${refreshed}`,
+      decayed > 0 ? "warn" : "success"
+    );
+    await loadTree(project, true);
+  } catch (err) {
+    logActivity(`[decay] Decay scan execution error for "${project}": ${err.message}`, "error");
+  } finally {
+    if (scanBtn) scanBtn.disabled = false;
+  }
+}
+
+// 11. VERIFICATION RUNNER WIDGET
 async function runVerification() {
   if (!state.currentProject || !state.selectedNodeId) {
     logActivity("Please select a tree node before running verification.", "warn");
@@ -801,7 +844,7 @@ ${stderr}</code>`;
   }
 }
 
-// 11. REAL-TIME SSE STREAM
+// 12. REAL-TIME SSE STREAM
 function connectSSE(project) {
   if (state.sseSource) {
     state.sseSource.close();
@@ -1218,6 +1261,9 @@ function bindControls() {
 
   const approveAllBtn = document.getElementById("btn-approve-all");
   if (approveAllBtn) approveAllBtn.addEventListener("click", () => approveAllClaims());
+
+  const scanDecayBtn = document.getElementById("btn-scan-decay");
+  if (scanDecayBtn) scanDecayBtn.addEventListener("click", () => runDecayScan());
 
   // Verification button
   const runVerifyBtn = document.getElementById("btn-run-verify");

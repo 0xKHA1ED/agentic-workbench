@@ -646,6 +646,7 @@ class TestWorkflowReadTools(unittest.TestCase):
         self.assertTrue(hasattr(workflow_mcp, "workflow_propose_tree_mutation"))
         self.assertTrue(hasattr(workflow_mcp, "workflow_stage_contract_claims"))
         self.assertTrue(hasattr(workflow_mcp, "workflow_execute_verification"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_decay_scan"))
         orient_fn = getattr(workflow_mcp, "workflow_orient")
         get_node_fn = getattr(workflow_mcp, "workflow_get_node")
         res = orient_fn("meta", "weak")
@@ -681,6 +682,7 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
         self.assertIn("workflow_propose_tree_mutation", tools)
         self.assertIn("workflow_stage_contract_claims", tools)
         self.assertIn("workflow_execute_verification", tools)
+        self.assertIn("workflow_decay_scan", tools)
 
         mut_props = tools["workflow_propose_tree_mutation"]["inputSchema"]["properties"]
         self.assertIn("project", mut_props)
@@ -1308,6 +1310,20 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
                 self.assertEqual(data["status"], "failed")
                 self.assertNotEqual(data["exit_code"], 0)
                 self.assertIn("timed out", data["stderr"].lower())
+
+    def test_workflow_decay_scan_returns_scan_result(self):
+        """Test workflow_decay_scan tool returns the scan_decay result dict."""
+        expected = {"scanned": 3, "decayed": 1, "refreshed": 0, "nodes": [{"id": "n1", "action": "decayed"}]}
+        with mock.patch("workflow_mcp.scan_decay", return_value=expected):
+            resp = self._call_tool(
+                "workflow_decay_scan",
+                {"project": "meta", "dry_run": True},
+            )
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data, expected)
 
 
 class TestMCPPipelineE2E(unittest.TestCase):

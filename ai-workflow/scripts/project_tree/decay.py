@@ -62,8 +62,6 @@ def _has_verification_spec(data: dict[str, Any]) -> bool:
 
 
 def _pattern_intersects_changed_files(node: dict, tree: dict, changed_files: list[Path]) -> bool:
-    if not changed_files:
-        return True
     changed = {path.resolve() for path in changed_files}
     for match in patterns.resolve_pattern_files(node, tree):
         if match.resolve() in changed:
@@ -82,6 +80,9 @@ def scan_decay(
     changed_files: list[Path] | None = None,
 ) -> dict[str, Any]:
     """Scan root nodes.yaml for verified_strong drift and decay or refresh nodes."""
+    if changed_files is not None and len(changed_files) == 0:
+        return {"scanned": 0, "decayed": 0, "refreshed": 0, "nodes": []}
+
     raw_tree = model.load_tree(project)
     composed_tree = fragments.compose_tree(raw_tree, project)
     raw_ids = _raw_node_ids(raw_tree)
