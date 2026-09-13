@@ -4,6 +4,7 @@ import io
 import json
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 # Ensure ai-workflow/scripts is discoverable
@@ -348,6 +349,223 @@ class TestMCPProtocolServer(unittest.TestCase):
         self.assertEqual(res1.get("result"), {})
         self.assertEqual(res2.get("id"), 2)
         self.assertEqual(res2.get("result", {}).get("protocolVersion"), "2024-11-05")
+
+
+class TestWorkflowReadTools(unittest.TestCase):
+    """Test suite for workflow_orient and workflow_get_node MCP read tools."""
+
+    def setUp(self):
+        self.server = workflow_mcp.default_server
+
+    def _call_tool(self, name: str, arguments: dict):
+        req = {
+            "jsonrpc": "2.0",
+            "id": 100,
+            "method": "tools/call",
+            "params": {
+                "name": name,
+                "arguments": arguments,
+            },
+        }
+        return self.server.handle_message(req)
+
+    def test_tools_list_registers_read_tools(self):
+        """Test that workflow_orient and workflow_get_node are registered on default_server."""
+        req = {"jsonrpc": "2.0", "id": 101, "method": "tools/list"}
+        resp = self.server.handle_message(req)
+        self.assertIsNotNone(resp)
+        tools = {t["name"]: t for t in resp.get("result", {}).get("tools", [])}
+        self.assertIn("workflow_orient", tools)
+        self.assertIn("workflow_get_node", tools)
+        self.assertIn("project", tools["workflow_orient"]["inputSchema"]["properties"])
+        self.assertIn("filter", tools["workflow_orient"]["inputSchema"]["properties"])
+        self.assertIn("project", tools["workflow_get_node"]["inputSchema"]["properties"])
+        self.assertIn("node_id", tools["workflow_get_node"]["inputSchema"]["properties"])
+
+    def test_workflow_orient_meta_weak(self):
+        """Test workflow_orient on meta with default filter weak."""
+        resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "weak"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["project"], "meta")
+        self.assertEqual(data["total_nodes"], 38)
+        self.assertEqual(data["filtered_count"], 36)
+        self.assertEqual(len(data["nodes"]), 36)
+        self.assertEqual(data["pending_proposals"], [])
+        # All returned nodes should have status == 'weak'
+        for node in data["nodes"]:
+            self.assertEqual(node.get("status"), "weak")
+        # Verify strong nodes are excluded
+        returned_ids = {n["id"] for n in data["nodes"]}
+        self.assertNotIn("tree-cli-usage", returned_ids)
+        self.assertNotIn("viewer-ui", returned_ids)
+        self.assertIn("root", returned_ids)
+
+    def test_workflow_orient_meta_all(self):
+        """Test workflow_orient on meta with filter all."""
+        resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "all"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["total_nodes"], 38)
+        self.assertEqual(data["filtered_count"], 38)
+        self.assertEqual(len(data["nodes"]), 38)
+        returned_ids = {n["id"] for n in data["nodes"]}
+        self.assertIn("tree-cli-usage", returned_ids)
+        self.assertIn("viewer-ui", returned_ids)
+
+    def test_workflow_orient_meta_decayed(self):
+        """Test workflow_orient on meta with filter decayed."""
+        resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "decayed"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["total_nodes"], 38)
+        self.assertEqual(data["filtered_count"], 0)
+        self.assertEqual(data["nodes"], [])
+
+    def test_workflow_orient_unknown_project(self):
+        """Test workflow_orient returns error for unknown project."""
+        resp = self._call_tool("workflow_orient", {"project": "nonexistent_project_xyz"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertTrue(result.get("isError"))
+        err_text = result["content"][0]["text"]
+        self.assertIn("nonexistent_project_xyz", err_text)
+
+    def test_workflow_orient_invalid_filter(self):
+        """Test workflow_orient returns error for invalid filter."""
+        resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "invalid_kind"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertTrue(result.get("isError"))
+        err_text = result["content"][0]["text"]
+        self.assertIn("invalid_kind", err_text)
+
+    def test_workflow_orient_with_pending_proposals(self):
+        """Test workflow_orient detects pending proposals."""
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            (proj_dir / "nodes.yaml").write_text("project: tmp-proj\nnodes:\n- id: r\n  title: R\n  kind: group\n  status: weak\n")
+            (proj_dir / "nodes.yaml.proposed").write_text("project: tmp-proj\nnodes:\n- id: r\n  title: R\n  kind: group\n  status: strong\n")
+            with unittest.mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool("workflow_orient", {"project": "tmp-proj"})
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["total_nodes"], 1)
+                self.assertEqual(len(data["pending_proposals"]), 1)
+                self.assertIn("target", data["pending_proposals"][0])
+                self.assertIn("path", data["pending_proposals"][0])
+
+    def test_workflow_get_node_existing_meta_node(self):
+        """Test workflow_get_node retrieves an existing node from meta project."""
+        resp = self._call_tool("workflow_get_node", {"project": "meta", "node_id": "tree-cli-usage"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["id"], "tree-cli-usage")
+        self.assertEqual(data["title"], "Propose / diff / apply workflow")
+        self.assertEqual(data["kind"], "work")
+        self.assertEqual(data["status"], "strong")
+        self.assertEqual(data["data"]["pattern"], "scripts/project_tree/cli.py")
+        self.assertIsNotNone(data.get("parent"))
+        self.assertEqual(data["parent"]["id"], "orient-skill")
+
+    def test_workflow_get_node_root_node_has_no_parent(self):
+        """Test workflow_get_node on root node returns None for parent."""
+        resp = self._call_tool("workflow_get_node", {"project": "meta", "node_id": "root"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["id"], "root")
+        self.assertIsNone(data.get("parent"))
+
+    def test_workflow_get_node_complete_details_fixture(self):
+        """Test workflow_get_node returning complete details (title, kind, status, data.pattern, data.pain, data.contract, data.claims)."""
+        import tempfile
+        from pathlib import Path
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "fixture-proj",
+                "nodes": [
+                    {
+                        "id": "root",
+                        "title": "Root Node",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [
+                            {
+                                "id": "detailed-leaf",
+                                "title": "Detailed Leaf Node",
+                                "kind": "work",
+                                "status": "weak",
+                                "data": {
+                                    "pattern": "src/core/leaf.py",
+                                    "pain": "Slow serialization overhead on 10k nodes",
+                                    "contract": "specs/leaf-optimization.md",
+                                    "claims": "claims/detailed-leaf.json",
+                                    "verification": {
+                                        "check_type": "command",
+                                        "command": "pytest tests/test_leaf.py",
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with unittest.mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_get_node",
+                    {"project": "fixture-proj", "node_id": "detailed-leaf"},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                node_info = json.loads(result["content"][0]["text"])
+                self.assertEqual(node_info["id"], "detailed-leaf")
+                self.assertEqual(node_info["title"], "Detailed Leaf Node")
+                self.assertEqual(node_info["kind"], "work")
+                self.assertEqual(node_info["status"], "weak")
+                self.assertEqual(node_info["data"]["pattern"], "src/core/leaf.py")
+                self.assertEqual(node_info["data"]["pain"], "Slow serialization overhead on 10k nodes")
+                self.assertEqual(node_info["data"]["contract"], "specs/leaf-optimization.md")
+                self.assertEqual(node_info["data"]["claims"], "claims/detailed-leaf.json")
+                self.assertIsNotNone(node_info["parent"])
+                self.assertEqual(node_info["parent"]["id"], "root")
+
+    def test_workflow_get_node_not_found(self):
+        """Test workflow_get_node returns error when node is not found."""
+        resp = self._call_tool("workflow_get_node", {"project": "meta", "node_id": "missing_node_123"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertTrue(result.get("isError"))
+        err_text = result["content"][0]["text"]
+        self.assertIn("missing_node_123", err_text)
+
+    def test_direct_functions(self):
+        """Test direct function invocation of workflow_orient and workflow_get_node."""
+        self.assertTrue(hasattr(workflow_mcp, "workflow_orient"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_get_node"))
+        orient_fn = getattr(workflow_mcp, "workflow_orient")
+        get_node_fn = getattr(workflow_mcp, "workflow_get_node")
+        res = orient_fn("meta", "weak")
+        self.assertEqual(res["total_nodes"], 38)
+        node_res = get_node_fn("meta", "tree-cli-usage")
+        self.assertEqual(node_res["id"], "tree-cli-usage")
 
 
 if __name__ == "__main__":

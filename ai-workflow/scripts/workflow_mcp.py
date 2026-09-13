@@ -1,10 +1,27 @@
 #!/usr/bin/env python3
 """JSON-RPC 2.0 stdio Model Context Protocol (MCP) server for ai-workflow."""
 
+import copy
 import inspect
 import json
 import sys
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TextIO, Union
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = str(PACKAGE_ROOT / "scripts")
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+
+from project_tree.fragments import compose_tree, walk_nodes
+from project_tree.model import (
+    find_node_in_tree,
+    find_parent_in_tree,
+    list_pending_proposals,
+    load_tree,
+    nodes_path,
+    resolve_project_name,
+)
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "ai-workflow"
@@ -282,6 +299,150 @@ def register_tool(
 ) -> Any:
     """Register a tool on the default module-level MCP server."""
     return default_server.register_tool(name, description, input_schema, handler)
+
+
+def workflow_orient(project: str, filter: str = "weak") -> Dict[str, Any]:
+    """Fetch high-level project orientation: active weak nodes, broken invariants, and pending contracts."""
+    filter_mode = (filter or "weak").lower()
+    if filter_mode not in ("weak", "decayed", "all"):
+        raise ValueError(f"Invalid filter '{filter}': must be one of 'weak', 'decayed', 'all'")
+
+    raw_tree = load_tree(project)
+    composed = compose_tree(raw_tree, project)
+    all_nodes = list(walk_nodes(composed.get("nodes") or []))
+    total_nodes = len(all_nodes)
+
+    if filter_mode == "weak":
+        filtered_nodes = [copy.deepcopy(n) for n in all_nodes if n.get("status") == "weak"]
+    elif filter_mode == "decayed":
+        filtered_nodes = [
+            copy.deepcopy(n)
+            for n in all_nodes
+            if n.get("status") in ("decayed", "decayed_unverified")
+            or bool(n.get("stale"))
+            or bool((n.get("data") or {}).get("decayed"))
+        ]
+    else:  # "all"
+        filtered_nodes = [copy.deepcopy(n) for n in all_nodes]
+
+    filtered_count = len(filtered_nodes)
+
+    pending_raw = list_pending_proposals(project)
+    pending_proposals = [
+        {
+            "target": target or "root",
+            "fragment": target,
+            "path": str(path),
+        }
+        for target, path in pending_raw
+    ]
+
+    summary = (
+        f"Project '{project}' orientation: {total_nodes} total nodes, "
+        f"{filtered_count} matching filter '{filter_mode}'. "
+        f"Pending proposals: {len(pending_proposals)}."
+    )
+
+    return {
+        "project": project,
+        "total_nodes": total_nodes,
+        "filtered_count": filtered_count,
+        "filter": filter_mode,
+        "nodes": filtered_nodes,
+        "pending_proposals": pending_proposals,
+        "has_pending_proposals": len(pending_proposals) > 0,
+        "summary": summary,
+    }
+
+
+def workflow_get_node(project: str, node_id: str) -> Dict[str, Any]:
+    """Retrieve deep context for a specific tree node: pain, pattern, linked claims, spec, and verification status."""
+    raw_tree = load_tree(project)
+    composed = compose_tree(raw_tree, project)
+
+    node = find_node_in_tree(composed, node_id)
+    if node is None:
+        raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+
+    parent = find_parent_in_tree(composed, node_id)
+    parent_payload = None
+    if parent:
+        parent_payload = {
+            "id": parent.get("id"),
+            "title": parent.get("title"),
+            "kind": parent.get("kind"),
+            "status": parent.get("status"),
+        }
+        if "data" in parent:
+            parent_payload["data"] = copy.deepcopy(parent["data"])
+
+    node_data = copy.deepcopy(node.get("data") or {})
+    payload = {
+        "project": project,
+        "id": node.get("id"),
+        "node_id": node.get("id"),
+        "title": node.get("title"),
+        "kind": node.get("kind"),
+        "status": node.get("status"),
+        "data": node_data,
+        "parent": parent_payload,
+        "parent_id": parent.get("id") if parent else None,
+        "children": copy.deepcopy(node.get("children") or []),
+        "node": copy.deepcopy(node),
+    }
+    if "stale" in node:
+        payload["stale"] = node["stale"]
+
+    return payload
+
+
+def register_builtin_tools(server: MCPServer) -> None:
+    """Register core workflow tools on an MCPServer instance."""
+    server.register_tool(
+        name="workflow_orient",
+        description="Fetch high-level project orientation: active weak nodes, broken invariants, and pending contracts.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "filter": {
+                    "type": "string",
+                    "enum": ["weak", "decayed", "all"],
+                    "default": "weak",
+                    "description": "Filter node status (weak, decayed, or all)",
+                },
+            },
+            "required": ["project"],
+        },
+        handler=workflow_orient,
+    )
+
+    server.register_tool(
+        name="workflow_get_node",
+        description="Retrieve deep context for a specific tree node: pain, pattern, linked claims, spec, and verification status.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "node_id": {
+                    "type": "string",
+                    "description": "Node identifier to fetch",
+                },
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_get_node,
+    )
+
+
+# Register builtin tools on default server
+register_builtin_tools(default_server)
 
 
 def run_stdio_server(
