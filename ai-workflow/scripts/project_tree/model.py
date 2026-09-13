@@ -13,12 +13,12 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ALIASES = {"ai-workflow": "meta"}
 
 
+from project_tree.resolver import find_repository_root
+
+
 def host_root() -> Path:
-    """Repository that hosts the package (parent when installed as a subfolder)."""
-    parent = PACKAGE_ROOT.parent
-    if (parent / ".git").exists():
-        return parent
-    return PACKAGE_ROOT
+    """Repository that hosts the package."""
+    return find_repository_root(PACKAGE_ROOT)
 
 
 # Codebase paths in data.pattern resolve against the host repo
