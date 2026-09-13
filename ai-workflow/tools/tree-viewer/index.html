@@ -3,27 +3,199 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Project Tree</title>
-  <link rel="stylesheet" href="/styles.css?v=5" />
+  <title>AI Workflow Cockpit</title>
+  <link rel="stylesheet" href="/styles.css?v=6" />
 </head>
 <body>
   <div class="app">
-    <header class="header">
-      <div class="header-top">
-        <h1 id="project-title">Project Tree</h1>
-        <div class="header-actions">
+    <!-- TOP HEADER / HUD BAR -->
+    <header class="hud-header">
+      <div class="hud-left">
+        <div class="hud-brand">
+          <span id="sse-status" class="status-dot connected" title="Connection: Connected"></span>
+          <h1 id="project-title">AI Workflow Cockpit</h1>
+        </div>
+        <div class="project-control">
           <select id="project-select" aria-label="Project"></select>
-          <button id="refresh-btn" type="button" title="Refresh">↻</button>
+          <button id="refresh-btn" type="button" title="Refresh Tree">↻</button>
         </div>
       </div>
-      <p class="meta" id="meta"></p>
-      <div id="pending-banner" class="pending-banner hidden" role="status">
-        Pending proposal — approve or reject in terminal before it appears here.
+
+      <div class="hud-center">
+        <div class="search-box">
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search nodes (/)..."
+            aria-label="Search tree nodes"
+            autocomplete="off"
+          />
+        </div>
+        <div class="filter-chips" role="group" aria-label="Status filters">
+          <button id="filter-all" type="button" class="filter-chip active" data-filter="all">All</button>
+          <button id="filter-weak" type="button" class="filter-chip" data-filter="weak">Weak</button>
+          <button id="filter-stale" type="button" class="filter-chip" data-filter="stale">Stale</button>
+          <button id="filter-strong" type="button" class="filter-chip" data-filter="strong">Strong</button>
+        </div>
       </div>
-      <div id="constraints" class="constraints"></div>
+
+      <div class="hud-right">
+        <div class="health-meter" title="Verified Strong Ratio">
+          <span id="health-label" class="health-label">Health: --%</span>
+          <div id="health-bar" class="health-bar">
+            <div id="health-bar-fill" class="health-bar-fill" style="width: 0%"></div>
+          </div>
+        </div>
+        <button id="shortcuts-btn" type="button" class="hud-btn" title="Keyboard shortcuts (?)">
+          <kbd>?</kbd>
+        </button>
+      </div>
     </header>
-    <main id="tree" class="tree" aria-label="Project tree"></main>
+
+    <!-- 2-COLUMN FLIGHT DECK WORKSPACE -->
+    <main id="cockpit-layout" class="cockpit-layout">
+      <!-- LEFT PANE: SCROLLABLE TREE HIERARCHY -->
+      <section id="tree-pane" class="tree-pane" aria-label="Tree Hierarchy">
+        <div class="pane-header">
+          <span class="pane-title">Hierarchy</span>
+          <span id="tree-stats" class="pane-badge">0 nodes</span>
+        </div>
+        <div id="tree" class="tree" tabindex="0" role="tree" aria-label="Project tree"></div>
+      </section>
+
+      <!-- RIGHT PANE: DETAIL & TRIAGE DECK -->
+      <section id="detail-pane" class="detail-pane" aria-label="Detail & Triage Deck">
+        
+        <!-- PENDING PROPOSALS BANNER -->
+        <section id="proposals-banner" class="hud-card proposals-card hidden" aria-label="Pending Proposals">
+          <div class="card-header proposals-header">
+            <div class="card-title-group">
+              <span class="card-title">Pending Proposals</span>
+              <span id="proposals-count" class="badge badge-stale">0</span>
+            </div>
+            <div class="card-actions">
+              <button id="btn-apply-proposal" type="button" class="btn btn-apply">Apply <kbd>Y</kbd></button>
+              <button id="btn-reject-proposal" type="button" class="btn btn-reject">Reject <kbd>N</kbd></button>
+            </div>
+          </div>
+          <div id="pending-banner" class="pending-banner hidden" role="status">
+            Pending proposal — approve or reject in terminal before it appears here.
+          </div>
+          <div id="proposals-list" class="proposals-list"></div>
+          <pre id="proposal-diff" class="diff-block"><code>No pending proposals.</code></pre>
+        </section>
+
+        <!-- NODE DETAILS CARD -->
+        <section id="node-details" class="hud-card node-details-card" aria-label="Node Details">
+          <div class="card-header">
+            <div class="node-heading-group">
+              <h2 id="node-detail-title" class="node-detail-title">Select a node</h2>
+              <span id="node-detail-id" class="node-detail-id"></span>
+            </div>
+            <div class="node-badges-group">
+              <span id="node-detail-kind" class="badge badge-kind">--</span>
+              <span id="node-detail-status" class="badge badge-status-empty">--</span>
+            </div>
+          </div>
+          <div class="card-body">
+            <p id="meta" class="meta"></p>
+            <div class="detail-row">
+              <span class="detail-label">Pattern:</span>
+              <code id="node-detail-pattern" class="detail-code">none</code>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Pain:</span>
+              <span id="node-detail-pain" class="detail-text">none</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Notes:</span>
+              <span id="node-detail-notes" class="detail-text">none</span>
+            </div>
+            <div class="detail-section">
+              <span class="detail-label">Constraints:</span>
+              <div id="constraints" class="constraints"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ACTIVE CLAIMS TRIAGE BOX -->
+        <section id="claims-triage" class="hud-card claims-card" aria-label="Claims Triage">
+          <div class="card-header">
+            <div class="card-title-group">
+              <span class="card-title">Active Claims Triage</span>
+              <span id="claims-count" class="pane-badge">0 claims</span>
+            </div>
+            <div class="card-actions">
+              <button id="btn-approve-claim" type="button" class="btn btn-approve">Approve <kbd>Y</kbd></button>
+              <button id="btn-reject-claim" type="button" class="btn btn-reject">Reject <kbd>N</kbd></button>
+              <button id="btn-approve-all" type="button" class="btn btn-approve-all">Approve All <kbd>A</kbd></button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="claims-goal" class="claims-goal-box">
+              <span class="detail-label">Goal:</span>
+              <span id="claims-goal-text" class="claims-goal-text">No active claim set loaded.</span>
+            </div>
+            <div id="claims-list" class="claims-list" role="listbox" aria-label="Claims List">
+              <p class="empty-hint">Select a node with staged claims to begin triage.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- VERIFICATION RUNNER WIDGET -->
+        <section id="verify-widget" class="hud-card verify-card" aria-label="Verification Runner">
+          <div class="card-header">
+            <div class="card-title-group">
+              <span class="card-title">Verification Runner</span>
+              <span id="verify-status" class="badge badge-status-empty">idle</span>
+            </div>
+            <button id="btn-run-verify" type="button" class="btn btn-primary">Run Verification</button>
+          </div>
+          <div class="card-body">
+            <pre id="verify-output" class="console-box"><code>No verification executed yet.</code></pre>
+          </div>
+        </section>
+
+      </section>
+    </main>
+
+    <!-- BOTTOM ACTIVITY CONSOLE STREAM -->
+    <footer id="activity-console" class="activity-console" aria-label="Activity Console Stream">
+      <div class="console-header">
+        <span class="console-title">Activity Console</span>
+        <button id="console-clear-btn" type="button" class="console-action-btn" title="Clear console">Clear</button>
+      </div>
+      <div id="console-output" class="console-stream" role="log" aria-live="polite">
+        <div class="console-line"><span class="console-time">[00:00:00]</span> Cockpit initialized.</div>
+      </div>
+    </footer>
+
+    <!-- KEYBOARD SHORTCUTS MODAL -->
+    <div id="shortcuts-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="shortcuts-title">Cockpit Keyboard Shortcuts</h3>
+          <button id="shortcuts-close-btn" type="button" class="modal-close-btn" aria-label="Close modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <table class="shortcuts-table">
+            <tbody>
+              <tr><td><kbd>J</kbd> / <kbd>↓</kbd></td><td>Navigate down (nodes / claims)</td></tr>
+              <tr><td><kbd>K</kbd> / <kbd>↑</kbd></td><td>Navigate up (nodes / claims)</td></tr>
+              <tr><td><kbd>Space</kbd> / <kbd>Enter</kbd></td><td>Expand / collapse selected tree branch</td></tr>
+              <tr><td><kbd>Y</kbd></td><td>Approve active claim or proposal</td></tr>
+              <tr><td><kbd>N</kbd></td><td>Reject active claim or proposal</td></tr>
+              <tr><td><kbd>A</kbd></td><td>Approve all claims for node</td></tr>
+              <tr><td><kbd>/</kbd></td><td>Focus search input</td></tr>
+              <tr><td><kbd>R</kbd></td><td>Refresh current project tree</td></tr>
+              <tr><td><kbd>?</kbd></td><td>Toggle this keyboard shortcuts cheatsheet</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Close modal or clear search focus</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
-  <script src="/app.js?v=5"></script>
+  <script src="/app.js?v=6"></script>
 </body>
 </html>
