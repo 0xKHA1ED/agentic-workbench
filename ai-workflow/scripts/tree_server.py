@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote
 
 import yaml
@@ -14,8 +16,10 @@ import yaml
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PACKAGE_ROOT / "scripts"))
 
-from project_tree import fragments
+import workflow_mcp
+from project_tree import fragments, model
 from project_tree.model import list_projects
+from spec_discovery.model import save_document
 
 UI_DIR = PACKAGE_ROOT / "tools" / "tree-viewer"
 
@@ -25,25 +29,63 @@ class TreeHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(UI_DIR), **kwargs)
 
     def log_message(self, format, *args):
-        if args and str(args[0]).startswith("GET /api"):
+        if args and any(str(args[0]).startswith(p) for p in ("GET /api", "POST /api")):
             super().log_message(format, *args)
 
     def do_GET(self):
-        if self.path == "/api/projects":
+        clean_path = self.path.split("?", 1)[0]
+        if clean_path == "/api/projects":
             self._json_response(list_projects())
             return
-        if self.path.startswith("/api/tree/"):
-            project = unquote(self.path.removeprefix("/api/tree/").strip("/"))
+        if clean_path.startswith("/api/tree/"):
+            project = unquote(clean_path.removeprefix("/api/tree/").strip("/"))
             try:
                 self._json_response(self._load_tree(project))
             except FileNotFoundError:
-                self.send_error(404, f"Project not found: {project}")
+                self._error_response(404, f"Project not found: {project}")
+            return
+        if clean_path == "/api/proposals" or clean_path == "/api/proposals/":
+            self._error_response(400, "Missing project: /api/proposals/<project>")
+            return
+        if clean_path.startswith("/api/proposals/"):
+            project = unquote(clean_path.removeprefix("/api/proposals/").strip("/"))
+            self._handle_get_proposals(project)
+            return
+        if clean_path == "/api/claims" or clean_path == "/api/claims/":
+            self._error_response(400, "Missing project and node_id: /api/claims/<project>/<node_id>")
+            return
+        if clean_path.startswith("/api/claims/"):
+            self._handle_get_claims(clean_path)
             return
         if self.path == "/":
             self.path = "/index.html"
         if "?" in self.path:
             self.path = self.path.split("?", 1)[0]
         return super().do_GET()
+
+    def do_POST(self):
+        clean_path = self.path.split("?", 1)[0].rstrip("/")
+        data = self._parse_json_body()
+        if data is None:
+            return
+
+        if clean_path == "/api/proposals/apply":
+            self._handle_proposals_apply(data)
+            return
+        if clean_path == "/api/proposals/reject":
+            self._handle_proposals_reject(data)
+            return
+        if clean_path == "/api/claims/triage":
+            self._handle_claims_triage(data)
+            return
+        if clean_path == "/api/verify":
+            self._handle_verify(data)
+            return
+        if clean_path == "/api/mutate":
+            self._handle_mutate(data)
+            return
+
+        self._error_response(404, f"Endpoint not found: {clean_path}")
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
@@ -67,14 +109,219 @@ class TreeHandler(SimpleHTTPRequestHandler):
             data["compose_error"] = str(exc)
         return data
 
-    def _json_response(self, payload) -> None:
+    def _parse_json_body(self) -> dict | None:
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self._error_response(400, "Invalid Content-Length")
+            return None
+
+        raw_body = self.rfile.read(content_length) if content_length > 0 else b""
+        if not raw_body:
+            return {}
+        try:
+            data = json.loads(raw_body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            self._error_response(400, f"Invalid JSON body: {exc}")
+            return None
+
+        if not isinstance(data, dict):
+            self._error_response(400, "JSON body must be an object")
+            return None
+        return data
+
+    def _handle_get_proposals(self, project: str) -> None:
+        if not project:
+            self._error_response(400, "Missing project name")
+            return
+        try:
+            name = model.resolve_project_name(project)
+            path = model.nodes_path(name)
+            if not path.exists():
+                self._error_response(404, f"Project not found: {project}")
+                return
+            pending_list = model.list_pending_proposals(name)
+            proposals = []
+            for frag, p_path in pending_list:
+                target_label = frag or "nodes.yaml"
+                diff_str = model.get_pending_proposal_diff(name, frag)
+                proposals.append({
+                    "target": target_label,
+                    "fragment": frag,
+                    "path": str(p_path),
+                    "diff": diff_str,
+                })
+            self._json_response({"project": project, "proposals": proposals})
+        except FileNotFoundError:
+            self._error_response(404, f"Project not found: {project}")
+        except Exception as exc:
+            self._error_response(500, f"Error loading proposals: {exc}")
+
+    def _handle_get_claims(self, clean_path: str) -> None:
+        parts = clean_path.removeprefix("/api/claims/").strip("/").split("/")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            self._error_response(400, "Invalid path format: expected /api/claims/<project>/<node_id>")
+            return
+        project = unquote(parts[0])
+        node_id = unquote(parts[1])
+        if ".." in node_id or "/" in node_id or "\\" in node_id:
+            self._error_response(400, "Invalid node_id")
+            return
+        try:
+            claims_file = model.project_dir(project) / "claims" / f"{node_id}.json"
+            if claims_file.is_file():
+                with claims_file.open("r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self._json_response(data)
+            else:
+                self._json_response({"claims": []})
+        except Exception as exc:
+            self._error_response(500, f"Error loading claims: {exc}")
+
+    def _handle_proposals_apply(self, data: dict) -> None:
+        project = data.get("project")
+        if not project or not str(project).strip():
+            self._error_response(400, "Missing required field 'project'")
+            return
+        fragment = data.get("fragment")
+        fragment_rel = fragment if fragment else None
+        try:
+            model.apply_pending_proposal(project, fragment_rel=fragment_rel)
+            self._json_response({"status": "applied", "project": project, "fragment": fragment_rel})
+        except FileNotFoundError as exc:
+            self._error_response(404, str(exc))
+        except Exception as exc:
+            self._error_response(400, str(exc))
+
+    def _handle_proposals_reject(self, data: dict) -> None:
+        project = data.get("project")
+        if not project or not str(project).strip():
+            self._error_response(400, "Missing required field 'project'")
+            return
+        fragment = data.get("fragment")
+        fragment_rel = fragment if fragment else None
+        try:
+            model.reject_pending_proposal(project, fragment_rel=fragment_rel)
+            self._json_response({"status": "rejected", "project": project, "fragment": fragment_rel})
+        except FileNotFoundError as exc:
+            self._error_response(404, str(exc))
+        except Exception as exc:
+            self._error_response(400, str(exc))
+
+    def _handle_claims_triage(self, data: dict) -> None:
+        project = data.get("project")
+        node_id = data.get("node_id")
+        claim_id = data.get("claim_id")
+        decision = data.get("decision")
+        if not project or not node_id or not claim_id or not decision:
+            self._error_response(400, "Missing required fields: 'project', 'node_id', 'claim_id', 'decision'")
+            return
+        if decision not in ("approved", "rejected", "skipped", "pending"):
+            self._error_response(400, f"Invalid decision: '{decision}'. Must be one of: approved, rejected, skipped, pending")
+            return
+        if ".." in node_id or "/" in node_id or "\\" in node_id:
+            self._error_response(400, "Invalid node_id")
+            return
+
+        claims_file = model.project_dir(project) / "claims" / f"{node_id}.json"
+        if not claims_file.is_file():
+            self._error_response(404, f"Claims file not found for node: {node_id}")
+            return
+
+        try:
+            with claims_file.open("r", encoding="utf-8") as f:
+                claims_data = json.load(f)
+        except Exception as exc:
+            self._error_response(500, f"Failed to read claims file: {exc}")
+            return
+
+        claims = claims_data.get("claims")
+        if not isinstance(claims, list):
+            self._error_response(400, "Malformed claims file: 'claims' is not a list")
+            return
+
+        target_claim = None
+        for c in claims:
+            if isinstance(c, dict) and c.get("id") == claim_id:
+                target_claim = c
+                break
+
+        if target_claim is None:
+            self._error_response(404, f"Claim '{claim_id}' not found in node '{node_id}'")
+            return
+
+        target_claim["decision"] = decision
+        target_claim["triaged_at"] = datetime.now(timezone.utc).isoformat()
+
+        try:
+            save_document(claims_file, claims_data)
+        except Exception as exc:
+            self._error_response(500, f"Failed to save claims file: {exc}")
+            return
+
+        self._json_response(claims_data)
+
+    def _handle_verify(self, data: dict) -> None:
+        project = data.get("project")
+        node_id = data.get("node_id")
+        if not project or not node_id:
+            self._error_response(400, "Missing required fields: 'project', 'node_id'")
+            return
+        try:
+            res = workflow_mcp.workflow_execute_verification(project, node_id)
+            self._json_response(res)
+        except FileNotFoundError as exc:
+            self._error_response(404, str(exc))
+        except ValueError as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            self._error_response(status, str(exc))
+        except Exception as exc:
+            self._error_response(500, f"Verification execution error: {exc}")
+
+    def _handle_mutate(self, data: dict) -> None:
+        project = data.get("project")
+        target_node_id = data.get("target_node_id")
+        operation = data.get("operation")
+        payload = data.get("payload")
+        fragment = data.get("fragment")
+
+        if not project or not target_node_id or not operation:
+            self._error_response(400, "Missing required fields: 'project', 'target_node_id', 'operation'")
+            return
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            self._error_response(400, "Field 'payload' must be a dictionary")
+            return
+
+        try:
+            res = workflow_mcp.workflow_propose_tree_mutation(
+                project=project,
+                target_node_id=target_node_id,
+                operation=operation,
+                payload=payload,
+                fragment=fragment,
+            )
+            self._json_response(res)
+        except FileNotFoundError as exc:
+            self._error_response(404, str(exc))
+        except ValueError as exc:
+            status = 404 if "not found" in str(exc).lower() else 400
+            self._error_response(status, str(exc))
+        except Exception as exc:
+            self._error_response(500, f"Mutation error: {exc}")
+
+    def _json_response(self, payload, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _error_response(self, status: int, message: str) -> None:
+        self._json_response({"error": message}, status=status)
 
 
 def main() -> int:
