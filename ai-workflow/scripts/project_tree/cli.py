@@ -450,28 +450,9 @@ def cmd_propose(args: argparse.Namespace) -> int:
             no_prompt=args.no_prompt,
         )
 
-    if op == "include-meal":
-        return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "include-meal", [args.rest[0]]), no_prompt=args.no_prompt)
-
-    if op == "exclude-meal":
-        return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "exclude-meal", [args.rest[0]]), no_prompt=args.no_prompt)
-
     if op == "add-group":
         parent_id, node_id, title = args.rest[0], args.rest[1], args.rest[2]
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "add-group", [parent_id, node_id, title]), no_prompt=args.no_prompt)
-
-    if op == "add-allergies":
-        parent_id = args.rest[0]
-        allergies = args.rest[1:]
-        as_children = "--children" in allergies
-        if as_children:
-            allergies = [a for a in allergies if a != "--children"]
-        return _propose(
-            args.project,
-            args.fragment,
-            lambda t: ops.apply_op(t, "add-allergies", [parent_id, *allergies], {"as_children": as_children}),
-            no_prompt=args.no_prompt,
-        )
 
     print(f"Unknown operation: {op}", file=sys.stderr)
     return 1

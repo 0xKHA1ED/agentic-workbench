@@ -145,66 +145,6 @@ def reparent(tree: dict, node_id: str, new_parent_id: str) -> dict:
     return out
 
 
-@_register("include-meal")
-def include_meal(tree: dict, meal: str) -> dict:
-    out = copy.deepcopy(tree)
-    meals_constraint = list(out.setdefault("constraints", {}).get("meals") or [])
-    if meal not in meals_constraint:
-        meals_constraint.append(meal)
-    out["constraints"]["meals"] = meals_constraint
-
-    meals_node = find_node_in_tree(out, "meals")
-    if not meals_node:
-        raise ValueError("Node 'meals' not found — add meals group first")
-
-    data = meals_node.get("data") or {}
-    included = list(data.get("included") or [])
-    excluded = list(data.get("excluded") or [])
-    if meal in excluded:
-        excluded.remove(meal)
-    if meal not in included:
-        included.append(meal)
-    meals_node["data"] = {**data, "included": included, "excluded": excluded}
-
-    children = _ensure_children(meals_node)
-    existing = next((c for c in children if c.get("id") == meal), None)
-    if existing:
-        existing["stale"] = False
-        if str(existing.get("notes", "")).startswith("superseded") or "excluded" in str(existing.get("notes", "")):
-            existing.pop("notes", None)
-    else:
-        children.append({"id": meal, "title": meal.capitalize(), "kind": "work", "status": "weak"})
-    return out
-
-
-@_register("exclude-meal")
-def exclude_meal(tree: dict, meal: str) -> dict:
-    out = copy.deepcopy(tree)
-    meals_constraint = list(out.setdefault("constraints", {}).get("meals") or [])
-    if meal in meals_constraint:
-        meals_constraint.remove(meal)
-    out["constraints"]["meals"] = meals_constraint
-
-    meals_node = find_node_in_tree(out, "meals")
-    if not meals_node:
-        raise ValueError("Node 'meals' not found")
-
-    data = meals_node.get("data") or {}
-    included = list(data.get("included") or [])
-    excluded = list(data.get("excluded") or [])
-    if meal in included:
-        included.remove(meal)
-    if meal not in excluded:
-        excluded.append(meal)
-    meals_node["data"] = {**data, "included": included, "excluded": excluded}
-
-    for child in _ensure_children(meals_node):
-        if child.get("id") == meal:
-            child["stale"] = True
-            child["notes"] = "excluded — meal not in plan"
-    return out
-
-
 @_register("add-group")
 def add_group(tree: dict, parent_id: str, node_id: str, title: str) -> dict:
     return add_child(tree, parent_id, node_id, title, kind="group", status="weak")
@@ -222,35 +162,6 @@ def attach_subtree(
     """Add a stub node that composes children from a fragment YAML file."""
     out = add_child(tree, parent_id, node_id, title, kind=kind, status="weak")
     return set_data(out, node_id, {"subtree": fragment_path})
-
-
-@_register("add-allergies")
-def add_allergies(
-    tree: dict,
-    parent_id: str,
-    *allergies: str,
-    as_children: bool = False,
-) -> dict:
-    out = copy.deepcopy(tree)
-    parent = find_node_in_tree(out, parent_id)
-    if not parent:
-        raise ValueError(f"Parent node not found: {parent_id}")
-
-    if as_children and len(allergies) <= 6:
-        children = _ensure_children(parent)
-        for allergy in allergies:
-            slug = allergy.lower().replace(" ", "-")
-            if any(c.get("id") == slug for c in children):
-                continue
-            children.append({"id": slug, "title": allergy, "kind": "data", "status": "discussing"})
-    else:
-        data = parent.get("data") or {}
-        existing = list(data.get("allergies") or [])
-        for a in allergies:
-            if a not in existing:
-                existing.append(a)
-        parent["data"] = {**data, "allergies": existing}
-    return out
 
 
 def apply_op(tree: dict, op: str, args: list[Any] | None = None, kwargs: dict[str, Any] | None = None) -> dict:

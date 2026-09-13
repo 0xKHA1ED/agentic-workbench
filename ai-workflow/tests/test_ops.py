@@ -423,6 +423,14 @@ class TestBatchAndApplyOp(BaseOpsTestCase):
         self.assertEqual(find_node_in_tree(custom_weakened, "root")["status"], "weak")
         self.assertEqual(find_node_in_tree(custom_weakened, "leaf-1")["status"], "weak")
 
+    def test_dead_operations_removed(self):
+        for op in ["include-meal", "exclude-meal", "add-allergies"]:
+            with self.subTest(op=op):
+                self.assertNotIn(op, ops.OP_HANDLERS)
+                with self.assertRaises(ValueError):
+                    ops.apply_op({"nodes": []}, op, ["test"])
+
+
 
 if __name__ == "__main__":
     unittest.main()
