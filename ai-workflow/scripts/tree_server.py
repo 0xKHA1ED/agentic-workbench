@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import json
+import select
+import socket
 import sys
+import time
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -22,6 +25,52 @@ from project_tree.model import list_projects
 from spec_discovery.model import save_document
 
 UI_DIR = PACKAGE_ROOT / "tools" / "tree-viewer"
+
+
+def get_project_fingerprint(proj_dir: Path | str) -> tuple:
+    """Calculate fingerprint (tuple of sorted (rel_path, mtime_ns, size)) of monitored files."""
+    proj_dir = Path(proj_dir)
+    file_records: list[tuple[str, int, int]] = []
+
+    # 1. nodes.yaml, nodes.yaml.proposed
+    for fname in ("nodes.yaml", "nodes.yaml.proposed"):
+        fpath = proj_dir / fname
+        try:
+            st = fpath.stat()
+            file_records.append((fname, st.st_mtime_ns, st.st_size))
+        except OSError:
+            pass
+
+    # 2. fragments/*.yaml, fragments/*.yaml.proposed
+    frag_dir = proj_dir / "fragments"
+    if frag_dir.is_dir():
+        try:
+            for entry in frag_dir.iterdir():
+                if entry.is_file() and (entry.name.endswith(".yaml") or entry.name.endswith(".yaml.proposed")):
+                    try:
+                        st = entry.stat()
+                        file_records.append((f"fragments/{entry.name}", st.st_mtime_ns, st.st_size))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
+    # 3. claims/*.json
+    claims_dir = proj_dir / "claims"
+    if claims_dir.is_dir():
+        try:
+            for entry in claims_dir.iterdir():
+                if entry.is_file() and entry.name.endswith(".json"):
+                    try:
+                        st = entry.stat()
+                        file_records.append((f"claims/{entry.name}", st.st_mtime_ns, st.st_size))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+
+    file_records.sort(key=lambda x: x[0])
+    return tuple(file_records)
 
 
 class TreeHandler(SimpleHTTPRequestHandler):
@@ -57,6 +106,13 @@ class TreeHandler(SimpleHTTPRequestHandler):
         if clean_path.startswith("/api/claims/"):
             self._handle_get_claims(clean_path)
             return
+        if clean_path == "/api/events" or clean_path == "/api/events/":
+            self._error_response(400, "Missing project: /api/events/<project>")
+            return
+        if clean_path.startswith("/api/events/"):
+            project = unquote(clean_path.removeprefix("/api/events/").strip("/"))
+            self._handle_events_stream(project)
+            return
         if self.path == "/":
             self.path = "/index.html"
         if "?" in self.path:
@@ -88,7 +144,12 @@ class TreeHandler(SimpleHTTPRequestHandler):
         self._error_response(404, f"Endpoint not found: {clean_path}")
 
     def end_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store")
+        has_cache_control = any(
+            h.lower().startswith(b"cache-control:")
+            for h in getattr(self, "_headers_buffer", [])
+        )
+        if not has_cache_control:
+            self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
     def _load_tree(self, name: str) -> dict:
@@ -311,12 +372,97 @@ class TreeHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self._error_response(500, f"Mutation error: {exc}")
 
+    def _is_server_shutting_down(self) -> bool:
+        if not hasattr(self, "server") or self.server is None:
+            return False
+        return bool(
+            getattr(self.server, "_shutdown_requested", False)
+            or getattr(self.server, "_BaseServer__shutdown_request", False)
+            or getattr(self.server, "shutdown_flag", False)
+        )
+
+    def _send_sse_event(self, event: str, data: dict) -> None:
+        payload = f"event: {event}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
+        self.wfile.write(payload)
+        self.wfile.flush()
+
+    def _handle_events_stream(self, project: str) -> None:
+        if not project:
+            self._error_response(400, "Missing project name")
+            return
+        try:
+            name = model.resolve_project_name(project)
+            proj_dir = model.project_dir(name)
+            nodes_file = model.nodes_path(name)
+            if not nodes_file.exists():
+                self._error_response(404, f"Project not found: {project}")
+                return
+        except FileNotFoundError:
+            self._error_response(404, f"Project not found: {project}")
+            return
+        except Exception as exc:
+            self._error_response(500, f"Error resolving project: {exc}")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-transform")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        try:
+            self._send_sse_event("connected", {"project": project})
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout, OSError):
+            self.close_connection = True
+            return
+
+        last_fingerprint = get_project_fingerprint(proj_dir)
+        poll_interval = getattr(self.server, "sse_poll_interval", 0.25)
+        ping_interval = getattr(self.server, "sse_ping_interval", 15.0)
+        last_event_time = time.time()
+
+        while True:
+            if self._is_server_shutting_down():
+                break
+
+            try:
+                r, _, _ = select.select([self.connection], [], [], poll_interval)
+                if r:
+                    peek = self.connection.recv(1, socket.MSG_PEEK)
+                    if not peek:
+                        break
+            except (OSError, socket.error):
+                break
+            except (AttributeError, ValueError):
+                time.sleep(poll_interval)
+
+            if self._is_server_shutting_down():
+                break
+
+            current_fingerprint = get_project_fingerprint(proj_dir)
+            now = time.time()
+            if current_fingerprint != last_fingerprint:
+                last_fingerprint = current_fingerprint
+                last_event_time = now
+                try:
+                    self._send_sse_event("tree_changed", {"project": project})
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout, OSError):
+                    break
+            elif now - last_event_time >= ping_interval:
+                last_event_time = now
+                try:
+                    self._send_sse_event("ping", {})
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, socket.timeout, OSError):
+                    break
+
+        self.close_connection = True
+
     def _json_response(self, payload, status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 

@@ -13,7 +13,7 @@ if SCRIPTS_DIR not in sys.path:
 
 import yaml
 from project_tree import model
-from tree_server import TreeHandler
+from tree_server import TreeHandler, get_project_fingerprint
 
 
 class TestTreeServerPendingProposals(unittest.TestCase):
@@ -129,6 +129,8 @@ class TestTreeServerRestApi(unittest.TestCase):
         from http.server import ThreadingHTTPServer
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), TreeHandler)
+        self.server.sse_poll_interval = 0.05
+        self.server.sse_ping_interval = 0.2
         self.port = self.server.server_port
         self.server_thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.server_thread.start()
@@ -152,12 +154,13 @@ class TestTreeServerRestApi(unittest.TestCase):
                 data = json.loads(resp.read().decode("utf-8"))
                 return resp.status, data
         except urllib.error.HTTPError as err:
-            body = err.read().decode("utf-8")
-            try:
-                data = json.loads(body)
-            except Exception:
-                data = body
-            return err.code, data
+            with err:
+                body = err.read().decode("utf-8")
+                try:
+                    data = json.loads(body)
+                except Exception:
+                    data = body
+                return err.code, data
 
     def _post(self, path: str, payload=None, raw_body: bytes | None = None):
         import urllib.error
@@ -180,12 +183,13 @@ class TestTreeServerRestApi(unittest.TestCase):
                 data = json.loads(resp.read().decode("utf-8"))
                 return resp.status, data
         except urllib.error.HTTPError as err:
-            body = err.read().decode("utf-8")
-            try:
-                data = json.loads(body)
-            except Exception:
-                data = body
-            return err.code, data
+            with err:
+                body = err.read().decode("utf-8")
+                try:
+                    data = json.loads(body)
+                except Exception:
+                    data = body
+                return err.code, data
 
     def test_get_proposals_no_pending(self):
         status, data = self._get("/api/proposals/test-proj")
@@ -379,6 +383,278 @@ class TestTreeServerRestApi(unittest.TestCase):
         status, data = self._post("/api/verify", raw_body=b"not-valid-json{")
         self.assertEqual(status, 400)
         self.assertIn("error", data)
+
+    def _read_sse_event(self, resp):
+        event_name = None
+        data_lines = []
+        import json
+        while True:
+            line = resp.readline()
+            if not line:
+                break
+            text = line.decode("utf-8")
+            if text.endswith("\r\n"):
+                text = text[:-2]
+            elif text.endswith("\n"):
+                text = text[:-1]
+            if not text:
+                break
+            if text.startswith("event:"):
+                event_name = text.split(":", 1)[1].strip()
+            elif text.startswith("data:"):
+                data_lines.append(text.split(":", 1)[1].strip())
+        raw_data = "\n".join(data_lines)
+        try:
+            data_obj = json.loads(raw_data) if raw_data else None
+        except Exception:
+            data_obj = raw_data
+        return event_name, data_obj
+
+    def test_json_response_headers_no_duplicate_cache_control(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        try:
+            conn.request("GET", "/api/proposals/test-proj")
+            resp = conn.getresponse()
+            cache_controls = resp.headers.get_all("Cache-Control")
+            self.assertEqual(len(cache_controls), 1)
+            self.assertEqual(cache_controls[0], "no-store")
+        finally:
+            conn.close()
+
+    def test_events_missing_project(self):
+        status1, data1 = self._get("/api/events")
+        self.assertEqual(status1, 400)
+        self.assertIn("error", data1)
+        status2, data2 = self._get("/api/events/")
+        self.assertEqual(status2, 400)
+        self.assertIn("error", data2)
+
+    def test_events_nonexistent_project(self):
+        status, data = self._get("/api/events/nonexistent")
+        self.assertEqual(status, 404)
+        self.assertIn("error", data)
+
+    def test_events_stream_headers_and_initial_connect(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.getheader("Content-Type"), "text/event-stream; charset=utf-8")
+            self.assertEqual(resp.getheader("Cache-Control"), "no-cache, no-transform")
+            self.assertEqual(resp.getheader("Connection"), "keep-alive")
+            self.assertEqual(resp.getheader("X-Accel-Buffering"), "no")
+            cache_controls = resp.headers.get_all("Cache-Control")
+            self.assertEqual(len(cache_controls), 1)
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_detects_nodes_yaml_modification(self):
+        import http.client
+        import time
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Modify nodes.yaml
+            time.sleep(0.05)
+            with self.nodes_file.open("w") as f:
+                yaml.safe_dump(
+                    {
+                        "project": "test-proj",
+                        "nodes": [
+                            {"id": "root", "title": "Root Changed", "kind": "goal", "status": "active"}
+                        ],
+                    },
+                    f,
+                )
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "tree_changed")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_detects_proposed_nodes_change(self):
+        import http.client
+        import time
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Create nodes.yaml.proposed
+            time.sleep(0.05)
+            (self.proj_dir / "nodes.yaml.proposed").write_text("test: proposal\n", encoding="utf-8")
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "tree_changed")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_detects_fragment_change(self):
+        import http.client
+        import time
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Create fragment
+            time.sleep(0.05)
+            frag_dir = self.proj_dir / "fragments"
+            frag_dir.mkdir(parents=True, exist_ok=True)
+            (frag_dir / "sim.yaml").write_text("nodes: []\n", encoding="utf-8")
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "tree_changed")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_detects_fragment_proposed_change(self):
+        import http.client
+        import time
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Create fragment proposed
+            time.sleep(0.05)
+            frag_dir = self.proj_dir / "fragments"
+            frag_dir.mkdir(parents=True, exist_ok=True)
+            (frag_dir / "sim.yaml.proposed").write_text("nodes: []\n", encoding="utf-8")
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "tree_changed")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_detects_claim_change(self):
+        import http.client
+        import time
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Create claim
+            time.sleep(0.05)
+            claims_dir = self.proj_dir / "claims"
+            claims_dir.mkdir(parents=True, exist_ok=True)
+            (claims_dir / "root.json").write_text('{"claims": []}\n', encoding="utf-8")
+
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "tree_changed")
+            self.assertEqual(data, {"project": "test-proj"})
+        finally:
+            conn.close()
+
+    def test_events_stream_heartbeat_ping(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", "/api/events/test-proj")
+            resp = conn.getresponse()
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "connected")
+
+            # Without any file changes, heartbeat ping should arrive within ~0.25s
+            event, data = self._read_sse_event(resp)
+            self.assertEqual(event, "ping")
+            self.assertEqual(data, {})
+        finally:
+            conn.close()
+
+    def test_events_stream_clean_disconnect(self):
+        import http.client
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("GET", "/api/events/test-proj")
+        resp = conn.getresponse()
+        event, data = self._read_sse_event(resp)
+        self.assertEqual(event, "connected")
+        # Abruptly close the connection
+        conn.close()
+
+        # Normal subsequent request works without any server hanging
+        status, data = self._get("/api/proposals/test-proj")
+        self.assertEqual(status, 200)
+
+
+class TestGetProjectFingerprint(unittest.TestCase):
+    """Unit tests for get_project_fingerprint change detection."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.proj_dir = Path(self.tmp_dir.name)
+        (self.proj_dir / "nodes.yaml").write_text("project: test\n", encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_fingerprint_changes_on_nodes_modification(self):
+        fp1 = get_project_fingerprint(self.proj_dir)
+        import time
+        time.sleep(0.01)
+        (self.proj_dir / "nodes.yaml").write_text("project: test-modified\n", encoding="utf-8")
+        fp2 = get_project_fingerprint(self.proj_dir)
+        self.assertNotEqual(fp1, fp2)
+
+    def test_fingerprint_changes_on_proposed_nodes(self):
+        fp1 = get_project_fingerprint(self.proj_dir)
+        prop = self.proj_dir / "nodes.yaml.proposed"
+        prop.write_text("prop\n", encoding="utf-8")
+        fp2 = get_project_fingerprint(self.proj_dir)
+        self.assertNotEqual(fp1, fp2)
+        prop.unlink()
+        fp3 = get_project_fingerprint(self.proj_dir)
+        self.assertEqual(fp1, fp3)
+
+    def test_fingerprint_changes_on_fragment(self):
+        fp1 = get_project_fingerprint(self.proj_dir)
+        frag_dir = self.proj_dir / "fragments"
+        frag_dir.mkdir()
+        (frag_dir / "sub.yaml").write_text("sub\n", encoding="utf-8")
+        fp2 = get_project_fingerprint(self.proj_dir)
+        self.assertNotEqual(fp1, fp2)
+        (frag_dir / "sub.yaml.proposed").write_text("prop\n", encoding="utf-8")
+        fp3 = get_project_fingerprint(self.proj_dir)
+        self.assertNotEqual(fp2, fp3)
+
+    def test_fingerprint_changes_on_claims(self):
+        fp1 = get_project_fingerprint(self.proj_dir)
+        claims_dir = self.proj_dir / "claims"
+        claims_dir.mkdir()
+        (claims_dir / "root.json").write_text("[]\n", encoding="utf-8")
+        fp2 = get_project_fingerprint(self.proj_dir)
+        self.assertNotEqual(fp1, fp2)
+
+    def test_fingerprint_ignores_unrelated_files(self):
+        fp1 = get_project_fingerprint(self.proj_dir)
+        (self.proj_dir / "unrelated.txt").write_text("hello\n", encoding="utf-8")
+        (self.proj_dir / "random.log").write_text("log\n", encoding="utf-8")
+        fp2 = get_project_fingerprint(self.proj_dir)
+        self.assertEqual(fp1, fp2)
 
 
 if __name__ == "__main__":
