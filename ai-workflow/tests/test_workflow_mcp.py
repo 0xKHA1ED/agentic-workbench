@@ -2,6 +2,8 @@
 
 import io
 import json
+import shutil
+import subprocess
 import sys
 import unittest
 from unittest import mock
@@ -1208,6 +1210,266 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
                 self.assertEqual(data["status"], "failed")
                 self.assertNotEqual(data["exit_code"], 0)
                 self.assertIn("timed out", data["stderr"].lower())
+
+
+class TestMCPPipelineE2E(unittest.TestCase):
+    """End-to-end integration test running workflow_mcp.py as a stdio subprocess.
+
+    Executes full pipeline sequence:
+    1. initialize
+    2. notifications/initialized
+    3. workflow_orient
+    4. workflow_get_node
+    5. workflow_propose_tree_mutation
+    6. workflow_stage_contract_claims
+    7. workflow_execute_verification
+    """
+
+    def setUp(self):
+        from project_tree import model
+        import yaml
+
+        self.project_name = "test_e2e_mcp_pipeline"
+        self.test_proj_dir = model.host_root() / "projects" / self.project_name
+        self.test_proj_dir.mkdir(parents=True, exist_ok=True)
+
+        initial_tree = {
+            "project": self.project_name,
+            "nodes": [
+                {
+                    "id": "root",
+                    "title": "E2E Pipeline Root",
+                    "kind": "group",
+                    "status": "weak",
+                    "children": [
+                        {
+                            "id": "sync-engine",
+                            "title": "Sync Engine Service",
+                            "kind": "work",
+                            "status": "weak",
+                            "data": {
+                                "pattern": "src/sync/**",
+                                "verification": {
+                                    "command": "python3 -c 'print(\"E2E_VERIFY_SUCCESS_OK\")'",
+                                },
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        (self.test_proj_dir / "nodes.yaml").write_text(yaml.dump(initial_tree))
+
+    def tearDown(self):
+        if hasattr(self, "test_proj_dir") and self.test_proj_dir.exists():
+            shutil.rmtree(self.test_proj_dir, ignore_errors=True)
+
+    def test_full_pipeline_stdio_subprocess(self):
+        """Test complete MCP JSON-RPC protocol lifecycle and tool pipeline over stdio subprocess."""
+        server_script = Path(workflow_mcp.__file__).resolve()
+        proc = subprocess.Popen(
+            [sys.executable, str(server_script)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+
+        try:
+            def _send_request(req: dict) -> None:
+                proc.stdin.write(json.dumps(req) + "\n")
+                proc.stdin.flush()
+
+            def _read_response() -> dict:
+                line = proc.stdout.readline()
+                self.assertTrue(line, "Expected JSON-RPC response from server stdout, but got EOF")
+                return json.loads(line)
+
+            # 1. initialize
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "e2e-pipeline-runner", "version": "1.0.0"},
+                },
+            })
+            init_resp = _read_response()
+            self.assertEqual(init_resp.get("jsonrpc"), "2.0")
+            self.assertEqual(init_resp.get("id"), 1)
+            self.assertNotIn("error", init_resp)
+            init_result = init_resp.get("result", {})
+            self.assertEqual(init_result.get("protocolVersion"), "2024-11-05")
+            self.assertEqual(init_result.get("serverInfo", {}).get("name"), "ai-workflow")
+
+            # 2. notifications/initialized
+            _send_request({
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+            })
+            # Notifications emit no response; server stdio loop remains active
+
+            # 3. workflow_orient
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {
+                    "name": "workflow_orient",
+                    "arguments": {
+                        "project": self.project_name,
+                        "filter": "weak",
+                    },
+                },
+            })
+            orient_resp = _read_response()
+            self.assertEqual(orient_resp.get("id"), 2)
+            self.assertNotIn("error", orient_resp)
+            orient_result = orient_resp.get("result", {})
+            self.assertNotIn("isError", orient_result)
+            orient_data = json.loads(orient_result["content"][0]["text"])
+            self.assertEqual(orient_data["project"], self.project_name)
+            self.assertEqual(orient_data["total_nodes"], 2)
+            self.assertEqual(orient_data["filtered_count"], 2)
+            node_ids = {n["id"] for n in orient_data["nodes"]}
+            self.assertIn("sync-engine", node_ids)
+
+            # 4. workflow_get_node
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "workflow_get_node",
+                    "arguments": {
+                        "project": self.project_name,
+                        "node_id": "sync-engine",
+                    },
+                },
+            })
+            get_resp = _read_response()
+            self.assertEqual(get_resp.get("id"), 3)
+            self.assertNotIn("error", get_resp)
+            get_result = get_resp.get("result", {})
+            self.assertNotIn("isError", get_result)
+            node_data = json.loads(get_result["content"][0]["text"])
+            self.assertEqual(node_data["id"], "sync-engine")
+            self.assertEqual(node_data["status"], "weak")
+            self.assertEqual(node_data["data"]["pattern"], "src/sync/**")
+            self.assertIsNotNone(node_data.get("parent"))
+            self.assertEqual(node_data["parent"]["id"], "root")
+
+            # 5. workflow_propose_tree_mutation
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {
+                    "name": "workflow_propose_tree_mutation",
+                    "arguments": {
+                        "project": self.project_name,
+                        "target_node_id": "sync-engine",
+                        "operation": "set_data",
+                        "payload": {
+                            "pain": "High latency in batch item synchronization when queue exceeds 500 items",
+                            "pattern": "src/sync/**",
+                        },
+                    },
+                },
+            })
+            mutate_resp = _read_response()
+            self.assertEqual(mutate_resp.get("id"), 4)
+            self.assertNotIn("error", mutate_resp)
+            mutate_result = mutate_resp.get("result", {})
+            self.assertNotIn("isError", mutate_result)
+            mutate_data = json.loads(mutate_result["content"][0]["text"])
+            self.assertEqual(mutate_data["status"], "staged")
+            self.assertEqual(mutate_data["target_node_id"], "sync-engine")
+            self.assertIn("High latency in batch item synchronization", mutate_data["diff"])
+            proposed_path = Path(mutate_data["proposed_file"])
+            self.assertTrue(proposed_path.exists())
+
+            # 6. workflow_stage_contract_claims
+            claims_payload = [
+                {
+                    "id": "c1",
+                    "kind": "verify",
+                    "text": "pytest tests/test_sync_batch.py passes under 50ms",
+                    "check_command": "python3 -c 'print(\"E2E_VERIFY_SUCCESS_OK\")'",
+                },
+                {
+                    "id": "c2",
+                    "kind": "must",
+                    "text": "Maintain transactional rollback consistency on database exceptions",
+                },
+                {
+                    "id": "c3",
+                    "kind": "must_not",
+                    "text": "Silently drop batch elements or freeze asynchronous event loops",
+                },
+            ]
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {
+                    "name": "workflow_stage_contract_claims",
+                    "arguments": {
+                        "project": self.project_name,
+                        "node_id": "sync-engine",
+                        "goal": "Process 500 items in batch sync queue within 50ms without dropped items",
+                        "claims": claims_payload,
+                        "in_scope": ["src/sync"],
+                        "out_scope": ["src/auth", "src/network"],
+                    },
+                },
+            })
+            stage_resp = _read_response()
+            self.assertEqual(stage_resp.get("id"), 5)
+            self.assertNotIn("error", stage_resp)
+            stage_result = stage_resp.get("result", {})
+            self.assertNotIn("isError", stage_result)
+            stage_data = json.loads(stage_result["content"][0]["text"])
+            self.assertEqual(stage_data["status"], "staged")
+            self.assertEqual(stage_data["claim_count"], 3)
+            claims_file = Path(stage_data["claims_path"])
+            self.assertTrue(claims_file.exists())
+
+            # 7. workflow_execute_verification
+            _send_request({
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {
+                    "name": "workflow_execute_verification",
+                    "arguments": {
+                        "project": self.project_name,
+                        "node_id": "sync-engine",
+                    },
+                },
+            })
+            exec_resp = _read_response()
+            self.assertEqual(exec_resp.get("id"), 6)
+            self.assertNotIn("error", exec_resp)
+            exec_result = exec_resp.get("result", {})
+            self.assertNotIn("isError", exec_result)
+            exec_data = json.loads(exec_result["content"][0]["text"])
+            self.assertEqual(exec_data["status"], "passed")
+            self.assertEqual(exec_data["exit_code"], 0)
+            self.assertIn("E2E_VERIFY_SUCCESS_OK", exec_data["stdout"])
+            self.assertIsInstance(exec_data["duration_seconds"], (int, float))
+
+            # Clean shutdown: closing stdin sends EOF to stdio loop
+            proc.stdin.close()
+            proc.wait(timeout=5)
+            self.assertEqual(proc.returncode, 0)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
 
 
 if __name__ == "__main__":
