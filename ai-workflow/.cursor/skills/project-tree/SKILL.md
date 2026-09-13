@@ -1,6 +1,6 @@
 ---
 name: project-tree
-description: Maintain project trees via scripts/project_tree.py only. Use for any project with projects/<name>/nodes.yaml — show tree, propose mutations (diff), apply/reject after user approval. Never edit nodes.yaml directly.
+description: Maintain project trees via scripts/project_tree.py only. Projects live in meta/, examples/*, or host projects/<name>/ — show tree, propose mutations (diff), apply/reject after user approval. Never edit nodes.yaml directly.
 disable-model-invocation: true
 ---
 
@@ -14,7 +14,7 @@ The tree is a **work map** (concerns, pain, status) — not a filesystem mirror.
 
 Announce: "Using project-tree skill."
 
-Run from repo root:
+Run from **`ai-workflow/`** package root (or `ai-workflow/scripts/` from host repo):
 
 ```bash
 python scripts/project_tree.py <command> <project> [args]
@@ -35,12 +35,12 @@ Install once: `pip install -r requirements.txt`
 ## Large codebase layout (fragments)
 
 ```
-projects/<initiative>/
-  nodes.yaml              # L0–L1 only (~10–20 product/platform stubs)
+<host>/projects/<initiative>/   # user initiatives in any host repo
+  nodes.yaml
   fragments/
-    inspection-certs.yaml # L2–L3 for one product — owned independently
-    notifications.yaml
-    ...
+
+ai-workflow/meta/               # dogfood (CLI name: meta)
+ai-workflow/examples/*          # shipped examples
 ```
 
 **Root stub** links a fragment:
@@ -155,7 +155,7 @@ python scripts/project_tree.py propose my-platform --fragment fragments/certs.ya
 
 ## Reference
 
-See `projects/fragment-demo/` for a working thin-root + fragments example (uses `sandbox/tik` paths).
+See `examples/fragment-demo/` for a working thin-root + fragments example.
 
 ## Adding new operations
 

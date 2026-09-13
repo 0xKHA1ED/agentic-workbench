@@ -7,12 +7,53 @@ from typing import Any
 
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PROJECTS_DIR = REPO_ROOT / "projects"
+# ai-workflow/scripts/project_tree/model.py → package root
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+
+PROJECT_ALIASES = {"ai-workflow": "meta"}
+
+
+def host_root() -> Path:
+    """Repository that hosts the package (parent when installed as a subfolder)."""
+    parent = PACKAGE_ROOT.parent
+    if (parent / ".git").exists():
+        return parent
+    return PACKAGE_ROOT
+
+
+# Codebase paths in data.pattern resolve against the host repo
+REPO_ROOT = host_root()
+
+
+def resolve_project_name(name: str) -> str:
+    return PROJECT_ALIASES.get(name, name)
 
 
 def project_dir(name: str) -> Path:
-    return PROJECTS_DIR / name
+    name = resolve_project_name(name)
+    if name == "meta":
+        return PACKAGE_ROOT / "meta"
+    example = PACKAGE_ROOT / "examples" / name
+    if (example / "nodes.yaml").exists():
+        return example
+    return host_root() / "projects" / name
+
+
+def list_projects() -> list[str]:
+    names: set[str] = set()
+    if (PACKAGE_ROOT / "meta" / "nodes.yaml").exists():
+        names.add("meta")
+    examples_dir = PACKAGE_ROOT / "examples"
+    if examples_dir.exists():
+        for path in sorted(examples_dir.iterdir()):
+            if path.is_dir() and (path / "nodes.yaml").exists():
+                names.add(path.name)
+    host_projects = host_root() / "projects"
+    if host_projects.exists():
+        for path in sorted(host_projects.iterdir()):
+            if path.is_dir() and (path / "nodes.yaml").exists():
+                names.add(path.name)
+    return sorted(names)
 
 
 def nodes_path(name: str) -> Path:

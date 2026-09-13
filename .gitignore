@@ -1,6 +1,5 @@
-# Local practice sandboxes — mutate freely, not committed
-projects/practice/
-projects/tik/
+# Host-repo sandboxes only — not part of ai-workflow package
+projects/
 sandbox/
 
 __pycache__/

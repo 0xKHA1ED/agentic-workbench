@@ -1,0 +1,23 @@
+# Fragment: spec-contract
+constraints:
+  codebase:
+  - .
+nodes:
+- id: contract-skill
+  title: scope-contract skill
+  kind: work
+  status: weak
+  data:
+    pattern: .cursor/skills/scope-contract/SKILL.md
+- id: contract-create
+  title: CREATE mode template
+  kind: work
+  status: weak
+  data:
+    pattern: .cursor/skills/scope-contract/SKILL.md
+- id: contract-review
+  title: REVIEW mode — 30s approve/fix
+  kind: work
+  status: weak
+  data:
+    pattern: .cursor/skills/scope-contract/SKILL.md

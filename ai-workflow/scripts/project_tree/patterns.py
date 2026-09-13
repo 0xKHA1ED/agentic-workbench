@@ -5,16 +5,22 @@ from pathlib import Path
 from typing import Any
 
 from .fragments import fragment_as_tree, list_fragment_refs, load_fragment_file, resolve_fragment_path
-from .model import REPO_ROOT, walk_nodes
+from .model import PACKAGE_ROOT, REPO_ROOT, walk_nodes
+
+
+def _codebase_path(item: str) -> Path:
+    if item in (".", "ai-workflow"):
+        return PACKAGE_ROOT
+    return REPO_ROOT / item
 
 
 def codebase_roots(tree: dict, node_data: dict | None = None) -> list[Path]:
     roots: list[Path] = []
     data = node_data or {}
     for item in data.get("codebase") or []:
-        roots.append(REPO_ROOT / str(item))
+        roots.append(_codebase_path(str(item)))
     for item in tree.get("constraints", {}).get("codebase") or []:
-        roots.append(REPO_ROOT / str(item))
+        roots.append(_codebase_path(str(item)))
     if not roots:
         roots.append(REPO_ROOT)
     return roots

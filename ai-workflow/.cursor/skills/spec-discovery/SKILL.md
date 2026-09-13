@@ -33,7 +33,7 @@ After:
 
 ### 2 — Write claims JSON (AI)
 
-Save to `projects/<project>/claims/<node-id>.json`:
+Save to `<project-dir>/claims/<node-id>.json` (e.g. `meta/claims/`, or `projects/<name>/claims/` in host repo):
 
 ```json
 {

@@ -1,0 +1,29 @@
+# Fragment: understand
+constraints:
+  codebase:
+  - .
+nodes:
+- id: understand-pain
+  title: Capture pain on node data.pain
+  kind: work
+  status: weak
+  data:
+    pattern: .cursor/skills/project-tree/SKILL.md
+- id: understand-investigate
+  title: Investigation ritual before spec-discovery
+  kind: work
+  status: weak
+  data:
+    pattern: meta/docs/DAILY-LOOP.md
+- id: understand-decompose
+  title: Split concern into child nodes / fragments
+  kind: work
+  status: weak
+  data:
+    pattern: scripts/project_tree/ops.py
+- id: understand-attach-subtree
+  title: attach-subtree for new product areas
+  kind: work
+  status: weak
+  data:
+    pattern: scripts/project_tree/ops.py

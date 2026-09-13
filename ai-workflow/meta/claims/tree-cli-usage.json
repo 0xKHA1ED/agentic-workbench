@@ -1,0 +1,51 @@
+{
+  "project": "meta",
+  "node": "tree-cli-usage",
+  "title": "Propose / diff / apply workflow",
+  "goal": "AI mutates the tree only through CLI proposals; user approves diffs before persistence.",
+  "in": [
+    "project_tree.py propose/apply/reject/pending",
+    "nodes.yaml and fragments/*.yaml targets",
+    "unified diff output"
+  ],
+  "out": [
+    "direct YAML edits by AI",
+    "auto-apply without user gate"
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "verify",
+      "text": "`propose <project> <op> ... --no-prompt` writes `*.proposed` and prints a unified diff without modifying the live tree file",
+      "source": "scripts/project_tree/cli.py:117-144",
+      "rationale": "Core safety gate — AI authors, CLI stages"
+    },
+    {
+      "id": "c2",
+      "kind": "verify",
+      "text": "`apply <project>` promotes `*.proposed` to the target yaml and deletes the pending file; `reject` deletes pending without applying",
+      "source": "scripts/project_tree/cli.py:59-87",
+      "rationale": "User-controlled persistence"
+    },
+    {
+      "id": "c3",
+      "kind": "verify",
+      "text": "A second `propose` while pending fails with an error directing user to apply or reject first",
+      "source": "scripts/project_tree/cli.py:125-126",
+      "rationale": "No silent overwrite of in-flight proposals"
+    },
+    {
+      "id": "c4",
+      "kind": "verify",
+      "text": "`propose --fragment fragments/foo.yaml` stages mutations against that fragment file (same apply/reject/pending flags)",
+      "source": "scripts/project_tree/cli.py:38-56",
+      "rationale": "Fragment-aware workflow documented in project-tree skill"
+    },
+    {
+      "id": "c5",
+      "kind": "must",
+      "text": "project-tree SKILL.md documents the mandatory workflow: show → propose --no-prompt → user y/n → apply/reject",
+      "source": ".cursor/skills/project-tree/SKILL.md:148-154"
+    }
+  ]
+}

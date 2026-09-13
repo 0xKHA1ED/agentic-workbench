@@ -25,9 +25,14 @@ def _diff(before: str, after: str, path: str) -> str:
 
 
 def _target_label(project: str, fragment_rel: str | None) -> str:
+    base = model.project_dir(project)
+    try:
+        rel = base.relative_to(model.host_root())
+    except ValueError:
+        rel = base
     if fragment_rel:
-        return f"projects/{project}/{fragment_rel}"
-    return f"projects/{project}/nodes.yaml"
+        return f"{rel}/{fragment_rel}"
+    return f"{rel}/nodes.yaml"
 
 
 def _load_target(project: str, fragment_rel: str | None) -> tuple[dict[str, Any], Path]:
@@ -470,14 +475,14 @@ def main(argv: list[str] | None = None) -> int:
             "list-fragments",
         ],
     )
-    parser.add_argument("project", help="Project name (folder under projects/)")
+    parser.add_argument("project", help="Project name (meta, examples/*, or host projects/*)")
     parser.add_argument("operation", nargs="?", help="Propose operation name (or 'batch')")
     parser.add_argument("rest", nargs=argparse.REMAINDER, help="Operation arguments")
     parser.add_argument(
         "--fragment",
         metavar="PATH",
         default=None,
-        help="Fragment YAML relative to projects/<project>/ (for propose/apply/show)",
+        help="Fragment YAML relative to project dir (for propose/apply/show)",
     )
     parser.add_argument(
         "--raw",

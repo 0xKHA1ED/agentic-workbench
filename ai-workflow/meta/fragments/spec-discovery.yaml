@@ -1,0 +1,42 @@
+# Fragment: spec-discovery
+constraints:
+  codebase:
+  - .
+nodes:
+- id: discovery-skill
+  title: spec-discovery skill
+  kind: work
+  status: weak
+  data:
+    pattern: .cursor/skills/spec-discovery/SKILL.md
+- id: discovery-cli
+  title: spec_discovery CLI
+  kind: group
+  status: weak
+  data:
+    pattern: scripts/spec_discovery/**
+  children:
+  - id: discovery-triage
+    title: review — y/n/s/e per claim
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/spec_discovery/triage.py
+  - id: discovery-assemble
+    title: assemble → scope-contract markdown
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/spec_discovery/assemble.py
+  - id: discovery-validate
+    title: validate claims JSON schema
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/spec_discovery/cli.py
+- id: discovery-claims-schema
+  title: Claims JSON format
+  kind: work
+  status: weak
+  data:
+    pattern: scripts/spec_discovery/model.py

@@ -1,5 +1,5 @@
 {
-  "project": "ai-workflow",
+  "project": "meta",
   "node": "spec-discovery",
   "title": "Spec discovery triage CLI",
   "goal": "User triages AI-proposed claims one at a time and assembles a scope contract without writing prose.",

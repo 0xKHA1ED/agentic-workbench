@@ -1,0 +1,23 @@
+# Fragment: implement
+constraints:
+  codebase:
+  - .
+nodes:
+- id: implement-handoff
+  title: Agent executes against spec_approved node
+  kind: work
+  status: weak
+  data:
+    pattern: meta/docs/DAILY-LOOP.md
+- id: implement-verify
+  title: Walk VERIFY checklist before done
+  kind: work
+  status: weak
+  data:
+    pattern: meta/docs/DAILY-LOOP.md
+- id: implement-status
+  title: spec_approved → done → strong flow
+  kind: work
+  status: weak
+  data:
+    pattern: scripts/project_tree/ops.py

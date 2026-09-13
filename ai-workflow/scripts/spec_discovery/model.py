@@ -6,8 +6,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PROJECTS_DIR = REPO_ROOT / "projects"
+from project_tree.model import PACKAGE_ROOT, project_dir
 
 VALID_KINDS = frozenset({"verify", "must", "must_not"})
 VALID_DECISIONS = frozenset({"pending", "approved", "rejected", "skipped"})
@@ -24,11 +23,11 @@ VAGUE_PATTERNS = [
 
 
 def claims_dir(project: str) -> Path:
-    return PROJECTS_DIR / project / "claims"
+    return project_dir(project) / "claims"
 
 
 def specs_dir(project: str) -> Path:
-    return PROJECTS_DIR / project / "specs"
+    return project_dir(project) / "specs"
 
 
 def load_document(path: Path) -> dict[str, Any]:

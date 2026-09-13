@@ -1,0 +1,48 @@
+# Fragment: platform
+constraints:
+  codebase:
+  - .
+nodes:
+- id: platform-tree-cli
+  title: project_tree CLI
+  kind: group
+  status: weak
+  data:
+    pattern: scripts/project_tree/**
+  children:
+  - id: platform-compose
+    title: Fragment compose + list-fragments
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/project_tree/fragments.py
+  - id: platform-ops
+    title: reparent, mark-stale, set-all-weak
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/project_tree/ops.py
+  - id: platform-patterns
+    title: validate-patterns --recursive
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/project_tree/patterns.py
+  - id: platform-discovery
+    title: Project discovery (meta, examples, host)
+    kind: work
+    status: weak
+    data:
+      pattern: scripts/project_tree/model.py
+- id: platform-install
+  title: INSTALL.md — add to any codebase
+  kind: work
+  status: weak
+  data:
+    pattern: INSTALL.md
+- id: platform-package-layout
+  title: Package layout + AGENTS.md
+  kind: work
+  status: weak
+  data:
+    pattern: AGENTS.md

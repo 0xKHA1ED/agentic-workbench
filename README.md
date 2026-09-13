@@ -1,49 +1,21 @@
-# Agentic Workbench
+# Agentic Coding
 
-Cursor skills and tooling for structured agentic coding — project trees, scope contracts, and a tree viewer.
+Host repository for the **AI Workflow** package — an installable agentic coding workflow for Cursor.
 
-## Skills
-
-Install by using this repo in Cursor (skills load from `.cursor/skills/`).
-
-- **`scope-contract`** — `/scope-contract` — falsifiable specs in ~30s review time
-- **`project-tree`** — `/project-tree` — conversational planning via `nodes.yaml` + CLI
-- **`spec-discovery`** — `/spec-discovery` — AI proposes claims → terminal y/n triage → assemble spec
-
-## Tools
-
-### Project tree CLI
+## Start here
 
 ```bash
-python3 scripts/project_tree.py show my-project              # composed view
-python3 scripts/project_tree.py compose my-project
-python3 scripts/project_tree.py validate-patterns my-project --recursive
-python3 scripts/project_tree.py propose my-project batch --file batch.json
-# See projects/fragment-demo/ for thin-root + per-product fragments
-# → diff + interactive y/n in terminal
+cd ai-workflow
 ```
 
-### Spec discovery
+Open **`ai-workflow/`** in Cursor (skills load via `.cursor/skills` symlink from repo root, or open the package folder directly).
 
-```bash
-python3 scripts/spec_discovery.py validate projects/<name>/claims/<node>.json
-python3 scripts/spec_discovery.py review projects/<name>/claims/<node>.json
-python3 scripts/spec_discovery.py assemble projects/<name>/claims/<node>.json
-```
+| Doc | Purpose |
+|-----|---------|
+| [ai-workflow/README.md](ai-workflow/README.md) | Package overview |
+| [ai-workflow/INSTALL.md](ai-workflow/INSTALL.md) | Install into any codebase |
+| [ai-workflow/meta/](ai-workflow/meta/) | Dogfood tree — improving the workflow itself |
 
-### Tree viewer
+## Local sandboxes (gitignored)
 
-```bash
-python3 scripts/tree_server.py
-# → http://127.0.0.1:8765
-```
-
-## Project trees
-
-Create `projects/<name>/nodes.yaml` for an initiative. Mutations go through `scripts/project_tree.py` only — propose, review diff, approve in terminal.
-
-## Requirements
-
-```bash
-pip install -r requirements.txt
-```
+Host-only practice trees and code copies live at `projects/` and `sandbox/` — not part of the shipped package.

@@ -1,0 +1,61 @@
+# Project tree — managed by scripts/project_tree.py
+project: meta
+constraints:
+  codebase:
+  - .
+  philosophy:
+  - early-steps-compound
+  - tree-is-memory-not-chat
+  - done-means-falsifiable-verify
+  daily-loop:
+  - orient
+  - understand
+  - spec-discovery
+  - spec-contract
+  - implement
+nodes:
+- id: root
+  title: AI Workflow
+  kind: group
+  status: weak
+  data:
+    readme: README.md
+    install: INSTALL.md
+  children:
+  - id: orient
+    title: Orient
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/orient.yaml
+  - id: understand
+    title: Understand
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/understand.yaml
+  - id: spec-discovery
+    title: Spec discovery
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/spec-discovery.yaml
+  - id: spec-contract
+    title: Spec contract
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/spec-contract.yaml
+  - id: implement
+    title: Implement
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/implement.yaml
+  - id: platform
+    title: Platform
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/platform.yaml
+updated: '2026-09-13'
