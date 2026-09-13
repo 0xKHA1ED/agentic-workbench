@@ -31,6 +31,9 @@ from project_tree.model import (
     resolve_project_name,
     save_tree,
     walk_nodes,
+    get_pending_proposal_diff,
+    apply_pending_proposal,
+    reject_pending_proposal,
 )
 
 
@@ -301,5 +304,185 @@ class TestTreeLoadingAndInspection(unittest.TestCase):
         self.assertIn("Grandchild One [work] discussing", rendered)
 
 
+class TestMultiProposalAndHelpers(unittest.TestCase):
+    """Tests for fragment-independent pending proposals and programmatic apply/reject helpers."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.proj_dir = Path(self.tmp_dir.name)
+        self.frag_dir = self.proj_dir / "fragments"
+        self.frag_dir.mkdir(parents=True)
+
+        self.root_file = self.proj_dir / "nodes.yaml"
+        self.root_tree = {
+            "project": "multi-test",
+            "updated": "2026-09-13",
+            "nodes": [
+                {
+                    "id": "root",
+                    "title": "Multi Root",
+                    "kind": "group",
+                    "status": "strong",
+                    "children": [
+                        {
+                            "id": "frag-alpha",
+                            "title": "Alpha Subtree",
+                            "kind": "group",
+                            "data": {"subtree": "fragments/alpha.yaml"},
+                        },
+                        {
+                            "id": "frag-beta",
+                            "title": "Beta Subtree",
+                            "kind": "group",
+                            "data": {"subtree": "fragments/beta.yaml"},
+                        },
+                    ],
+                }
+            ],
+        }
+        self.root_file.write_text(dump_tree(self.root_tree))
+
+        self.alpha_file = self.frag_dir / "alpha.yaml"
+        self.alpha_tree = {
+            "nodes": [
+                {
+                    "id": "alpha-task",
+                    "title": "Alpha Task",
+                    "kind": "work",
+                    "status": "weak",
+                }
+            ]
+        }
+        self.alpha_file.write_text(dump_tree(self.alpha_tree))
+
+        self.beta_file = self.frag_dir / "beta.yaml"
+        self.beta_tree = {
+            "nodes": [
+                {
+                    "id": "beta-task",
+                    "title": "Beta Task",
+                    "kind": "work",
+                    "status": "weak",
+                }
+            ]
+        }
+        self.beta_file.write_text(dump_tree(self.beta_tree))
+
+        self.dir_patch = patch.object(model, "project_dir", return_value=self.proj_dir)
+        self.dir_patch.start()
+
+    def tearDown(self):
+        self.dir_patch.stop()
+        self.tmp_dir.cleanup()
+
+    def test_simultaneous_fragment_pending_proposals(self):
+        alpha_proposed = self.frag_dir / "alpha.yaml.proposed"
+        beta_proposed = self.frag_dir / "beta.yaml.proposed"
+
+        alpha_proposed.write_text(dump_tree({"nodes": [{"id": "alpha-task", "title": "Alpha Task", "kind": "work", "status": "strong"}]}))
+        beta_proposed.write_text(dump_tree({"nodes": [{"id": "beta-task", "title": "Beta Task", "kind": "work", "status": "discussing"}]}))
+
+        proposals = list_pending_proposals("multi-test")
+        self.assertEqual(len(proposals), 2)
+        proposal_targets = [p[0] for p in proposals]
+        self.assertIn("fragments/alpha.yaml", proposal_targets)
+        self.assertIn("fragments/beta.yaml", proposal_targets)
+
+    def test_get_pending_proposal_diff(self):
+        alpha_proposed = self.frag_dir / "alpha.yaml.proposed"
+        alpha_proposed.write_text(dump_tree({"nodes": [{"id": "alpha-task", "title": "Alpha Task", "kind": "work", "status": "strong"}]}))
+
+        diff = get_pending_proposal_diff("multi-test", "fragments/alpha.yaml")
+        self.assertTrue(bool(diff))
+        self.assertIn("-  status: weak", diff)
+        self.assertIn("+  status: strong", diff)
+
+        # Non-pending fragment returns empty diff
+        empty_diff = get_pending_proposal_diff("multi-test", "fragments/beta.yaml")
+        self.assertEqual(empty_diff, "")
+
+        # Non-pending root returns empty diff
+        root_empty_diff = get_pending_proposal_diff("multi-test", None)
+        self.assertEqual(root_empty_diff, "")
+
+    def test_apply_pending_proposal_fragment_isolation(self):
+        alpha_proposed = self.frag_dir / "alpha.yaml.proposed"
+        beta_proposed = self.frag_dir / "beta.yaml.proposed"
+
+        alpha_data = {"nodes": [{"id": "alpha-task", "title": "Alpha Task", "kind": "work", "status": "strong"}]}
+        beta_data = {"nodes": [{"id": "beta-task", "title": "Beta Task", "kind": "work", "status": "discussing"}]}
+
+        alpha_proposed.write_text(dump_tree(alpha_data))
+        beta_proposed.write_text(dump_tree(beta_data))
+
+        # Apply only alpha
+        result = apply_pending_proposal("multi-test", "fragments/alpha.yaml")
+        self.assertEqual(result["nodes"][0]["status"], "strong")
+
+        # alpha proposed file is removed, target file is updated
+        self.assertFalse(alpha_proposed.exists())
+        import yaml
+        saved_alpha = yaml.safe_load(self.alpha_file.read_text())
+        self.assertEqual(saved_alpha["nodes"][0]["status"], "strong")
+
+        # beta proposed file is untouched and still pending
+        self.assertTrue(beta_proposed.exists())
+        saved_beta = yaml.safe_load(self.beta_file.read_text())
+        self.assertEqual(saved_beta["nodes"][0]["status"], "weak")
+
+    def test_reject_pending_proposal_fragment_isolation(self):
+        alpha_proposed = self.frag_dir / "alpha.yaml.proposed"
+        beta_proposed = self.frag_dir / "beta.yaml.proposed"
+
+        alpha_proposed.write_text(dump_tree({"nodes": [{"id": "alpha-task", "title": "Alpha Task", "kind": "work", "status": "strong"}]}))
+        beta_proposed.write_text(dump_tree({"nodes": [{"id": "beta-task", "title": "Beta Task", "kind": "work", "status": "discussing"}]}))
+
+        # Reject only alpha
+        reject_pending_proposal("multi-test", "fragments/alpha.yaml")
+
+        self.assertFalse(alpha_proposed.exists())
+        self.assertTrue(beta_proposed.exists())
+
+        # Original files untouched
+        import yaml
+        saved_alpha = yaml.safe_load(self.alpha_file.read_text())
+        self.assertEqual(saved_alpha["nodes"][0]["status"], "weak")
+
+    def test_root_pending_proposal_lifecycle(self):
+        root_proposed = self.proj_dir / "nodes.yaml.proposed"
+        modified_tree = copy.deepcopy(self.root_tree)
+        modified_tree["nodes"][0]["title"] = "Updated Multi Root"
+        root_proposed.write_text(dump_tree(modified_tree))
+
+        diff = get_pending_proposal_diff("multi-test", None)
+        self.assertIn("Updated Multi Root", diff)
+
+        # Apply root proposal
+        applied = apply_pending_proposal("multi-test", None)
+        self.assertEqual(applied["nodes"][0]["title"], "Updated Multi Root")
+        self.assertFalse(root_proposed.exists())
+
+        import yaml
+        saved_root = yaml.safe_load(self.root_file.read_text())
+        self.assertEqual(saved_root["nodes"][0]["title"], "Updated Multi Root")
+
+        # Stage another root proposal and reject it
+        root_proposed.write_text(dump_tree(modified_tree))
+        self.assertTrue(root_proposed.exists())
+        reject_pending_proposal("multi-test", None)
+        self.assertFalse(root_proposed.exists())
+
+    def test_apply_or_reject_nonexistent_raises(self):
+        with self.assertRaises(FileNotFoundError):
+            apply_pending_proposal("multi-test", "fragments/nonexistent.yaml")
+        with self.assertRaises(FileNotFoundError):
+            reject_pending_proposal("multi-test", "fragments/nonexistent.yaml")
+        with self.assertRaises(FileNotFoundError):
+            apply_pending_proposal("multi-test", None)
+        with self.assertRaises(FileNotFoundError):
+            reject_pending_proposal("multi-test", None)
+
+
 if __name__ == "__main__":
     unittest.main()
+

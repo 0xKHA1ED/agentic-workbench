@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from datetime import date
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,88 @@ def list_pending_proposals(name: str) -> list[tuple[str | None, Path]]:
             rel = f"fragments/{path.name.removesuffix('.proposed')}"
             pending.append((rel, path))
     return pending
+
+
+def _resolve_proposal_paths(project: str, fragment_rel: str | None = None) -> tuple[Path, Path]:
+    from project_tree import fragments
+
+    if fragment_rel:
+        target_path = fragments.resolve_fragment_path(project, fragment_rel)
+        pending_path = fragments.fragment_proposed_path(target_path)
+    else:
+        target_path = nodes_path(project)
+        pending_path = proposed_path(project)
+    return target_path, pending_path
+
+
+def get_pending_proposal_diff(project: str, fragment_rel: str | None = None) -> str:
+    """Return unified diff for pending proposal on project (or fragment), or empty string if none."""
+    from project_tree import fragments
+
+    target_path, pending_path = _resolve_proposal_paths(project, fragment_rel)
+    if not pending_path.exists():
+        return ""
+
+    if fragment_rel:
+        current_data = fragments.load_fragment_file(target_path)
+        current_tree = fragments.fragment_as_tree(current_data, f"{project}:{fragment_rel}")
+        with pending_path.open() as f:
+            proposed_data = yaml.safe_load(f)
+        if isinstance(proposed_data, dict) and "project" not in proposed_data:
+            proposed_tree = fragments.fragment_as_tree(proposed_data, f"{project}:{fragment_rel}")
+        else:
+            proposed_tree = proposed_data
+    else:
+        current_tree = load_tree(project)
+        with pending_path.open() as f:
+            proposed_tree = yaml.safe_load(f)
+
+    base = project_dir(project)
+    try:
+        rel = base.relative_to(host_root())
+    except ValueError:
+        rel = base
+    label = f"{rel}/{fragment_rel}" if fragment_rel else f"{rel}/nodes.yaml"
+
+    before_text = dump_tree(current_tree)
+    after_text = dump_tree(proposed_tree)
+
+    return "".join(
+        difflib.unified_diff(
+            before_text.splitlines(keepends=True),
+            after_text.splitlines(keepends=True),
+            fromfile=f"a/{label}",
+            tofile=f"b/{label}",
+        )
+    )
+
+
+def apply_pending_proposal(project: str, fragment_rel: str | None = None) -> dict[str, Any]:
+    """Apply staged pending proposal to target file (root or fragment), unlink .proposed file, and return applied tree data."""
+    from project_tree import fragments
+
+    target_path, pending_path = _resolve_proposal_paths(project, fragment_rel)
+    if not pending_path.exists():
+        raise FileNotFoundError(f"No pending proposal found for {fragment_rel or 'root'} at {pending_path}")
+
+    with pending_path.open() as f:
+        proposed_data = yaml.safe_load(f)
+
+    if fragment_rel:
+        fragments.save_fragment_file(target_path, proposed_data)
+    else:
+        save_tree(project, proposed_data, path=target_path)
+
+    pending_path.unlink()
+    return proposed_data
+
+
+def reject_pending_proposal(project: str, fragment_rel: str | None = None) -> None:
+    """Unlink the .proposed file for the target proposal."""
+    _, pending_path = _resolve_proposal_paths(project, fragment_rel)
+    if not pending_path.exists():
+        raise FileNotFoundError(f"No pending proposal found for {fragment_rel or 'root'} at {pending_path}")
+    pending_path.unlink()
 
 
 def load_tree(name: str) -> dict[str, Any]:

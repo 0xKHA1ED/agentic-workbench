@@ -6,14 +6,18 @@ from typing import Any
 
 import yaml
 
-from .model import REPO_ROOT, project_dir, walk_nodes
+from . import model
+
+REPO_ROOT = model.REPO_ROOT
+project_dir = model.project_dir
+walk_nodes = model.walk_nodes
 
 
 def resolve_fragment_path(project: str, rel_path: str) -> Path:
     rel = Path(rel_path)
     if rel.is_absolute():
         raise ValueError(f"subtree must be relative to project dir: {rel_path}")
-    base = project_dir(project).resolve()
+    base = model.project_dir(project).resolve()
     full = (base / rel).resolve()
     if not str(full).startswith(str(base)):
         raise ValueError(f"subtree escapes project dir: {rel_path}")

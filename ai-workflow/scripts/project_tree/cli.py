@@ -96,14 +96,7 @@ def _apply_target(project: str, fragment_rel: str | None) -> int:
             return 1
         print("Error: no pending proposal.", file=sys.stderr)
         return 1
-    proposed = yaml_load(pending)
-    target_path = (
-        fragments.resolve_fragment_path(project, fragment_rel)
-        if fragment_rel
-        else model.nodes_path(project)
-    )
-    _save_target(project, fragment_rel, proposed, target_path)
-    pending.unlink()
+    proposed = model.apply_pending_proposal(project, fragment_rel)
     label = _target_label(project, fragment_rel)
     print(f"Applied proposal to {label}")
     if fragment_rel:
@@ -127,7 +120,7 @@ def _reject_target(project: str, fragment_rel: str | None) -> int:
             return 1
         print("Error: no pending proposal.", file=sys.stderr)
         return 1
-    pending.unlink()
+    model.reject_pending_proposal(project, fragment_rel)
     print("Proposal rejected.")
     return 0
 
@@ -165,15 +158,17 @@ def _propose(
     summary: str | None = None,
     no_prompt: bool = False,
 ) -> int:
-    existing = model.list_pending_proposals(project)
-    if existing:
-        print("Error: resolve pending proposal(s) before proposing again.", file=sys.stderr)
-        for frag, _ in existing:
-            flag = _fragment_flag(frag)
-            print(f"  {_pending_target_label(frag)}:", file=sys.stderr)
-            print(f"    python scripts/project_tree.py pending {project}{flag}", file=sys.stderr)
-            print(f"    python scripts/project_tree.py apply {project}{flag}", file=sys.stderr)
-            print(f"    python scripts/project_tree.py reject {project}{flag}", file=sys.stderr)
+    pending = _pending_path(project, fragment_rel)
+    if pending.exists():
+        print(
+            f"Error: resolve pending proposal for {_pending_target_label(fragment_rel)} before proposing again.",
+            file=sys.stderr,
+        )
+        flag = _fragment_flag(fragment_rel)
+        print(f"  {_pending_target_label(fragment_rel)}:", file=sys.stderr)
+        print(f"    python scripts/project_tree.py pending {project}{flag}", file=sys.stderr)
+        print(f"    python scripts/project_tree.py apply {project}{flag}", file=sys.stderr)
+        print(f"    python scripts/project_tree.py reject {project}{flag}", file=sys.stderr)
         return 1
 
     current, _ = _load_target(project, fragment_rel)
@@ -287,7 +282,6 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 def cmd_pending(args: argparse.Namespace) -> int:
     pending = _pending_path(args.project, args.fragment)
-    current, _ = _load_target(args.project, args.fragment)
     if not pending.exists():
         others = model.list_pending_proposals(args.project)
         if others:
@@ -299,9 +293,7 @@ def cmd_pending(args: argparse.Namespace) -> int:
             return 0
         print("No pending proposal.")
         return 0
-    proposed = yaml_load(pending)
-    label = _target_label(args.project, args.fragment)
-    diff = _diff(model.dump_tree(current), model.dump_tree(proposed), label)
+    diff = model.get_pending_proposal_diff(args.project, args.fragment)
     print(diff or "No diff.")
     return 0
 

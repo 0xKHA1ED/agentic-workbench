@@ -431,6 +431,106 @@ class TestBatchAndApplyOp(BaseOpsTestCase):
                     ops.apply_op({"nodes": []}, op, ["test"])
 
 
+class TestCliProposeIsolationAndOpsExports(unittest.TestCase):
+    """Tests for CLI propose bottleneck lifting and ops module helper re-exports."""
+
+    def test_ops_exports_proposal_helpers(self):
+        self.assertTrue(hasattr(ops, "get_pending_proposal_diff"))
+        self.assertTrue(hasattr(ops, "apply_pending_proposal"))
+        self.assertTrue(hasattr(ops, "reject_pending_proposal"))
+
+    def test_cli_propose_isolated_by_fragment(self):
+        import tempfile
+        from unittest.mock import patch
+        from project_tree import cli, model
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            proj_dir = Path(tmp_dir)
+            frag_dir = proj_dir / "fragments"
+            frag_dir.mkdir(parents=True)
+
+            root_file = proj_dir / "nodes.yaml"
+            root_file.write_text(
+                "project: iso-test\n"
+                "nodes:\n"
+                "  - id: root\n"
+                "    title: Iso Root\n"
+                "    kind: group\n"
+                "    status: strong\n"
+            )
+
+            alpha_file = frag_dir / "alpha.yaml"
+            alpha_file.write_text(
+                "nodes:\n"
+                "  - id: alpha-leaf\n"
+                "    title: Alpha Leaf\n"
+                "    kind: work\n"
+                "    status: weak\n"
+            )
+
+            beta_file = frag_dir / "beta.yaml"
+            beta_file.write_text(
+                "nodes:\n"
+                "  - id: beta-leaf\n"
+                "    title: Beta Leaf\n"
+                "    kind: work\n"
+                "    status: weak\n"
+            )
+
+            with patch.object(model, "project_dir", return_value=proj_dir), \
+                 patch("project_tree.fragments.project_dir", return_value=proj_dir):
+                # 1. Propose change to fragment alpha
+                rc_alpha = cli._propose(
+                    "iso-test",
+                    "fragments/alpha.yaml",
+                    lambda t: ops.set_status(t, "alpha-leaf", "strong"),
+                    no_prompt=True,
+                )
+                self.assertEqual(rc_alpha, 0)
+                alpha_proposed = frag_dir / "alpha.yaml.proposed"
+                self.assertTrue(alpha_proposed.exists())
+
+                # 2. Propose change to fragment beta - must SUCCEED even though alpha is pending!
+                rc_beta = cli._propose(
+                    "iso-test",
+                    "fragments/beta.yaml",
+                    lambda t: ops.set_status(t, "beta-leaf", "discussing"),
+                    no_prompt=True,
+                )
+                self.assertEqual(rc_beta, 0)
+                beta_proposed = frag_dir / "beta.yaml.proposed"
+                self.assertTrue(beta_proposed.exists())
+
+                # 3. Propose to fragment alpha AGAIN - must be BLOCKED because alpha is already pending!
+                rc_alpha_dup = cli._propose(
+                    "iso-test",
+                    "fragments/alpha.yaml",
+                    lambda t: ops.set_status(t, "alpha-leaf", "discussing"),
+                    no_prompt=True,
+                )
+                self.assertEqual(rc_alpha_dup, 1)
+
+                # 4. Propose change to root - must SUCCEED even though alpha and beta are pending!
+                rc_root = cli._propose(
+                    "iso-test",
+                    None,
+                    lambda t: ops.set_status(t, "root", "weak"),
+                    no_prompt=True,
+                )
+                self.assertEqual(rc_root, 0)
+                root_proposed = proj_dir / "nodes.yaml.proposed"
+                self.assertTrue(root_proposed.exists())
+
+                # 5. Propose change to root AGAIN - must be BLOCKED because root is already pending!
+                rc_root_dup = cli._propose(
+                    "iso-test",
+                    None,
+                    lambda t: ops.set_status(t, "root", "discussing"),
+                    no_prompt=True,
+                )
+                self.assertEqual(rc_root_dup, 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -3,7 +3,13 @@ from __future__ import annotations
 import copy
 from typing import Any, Callable
 
-from .model import contains_descendant, find_node_in_tree
+from .model import (
+    apply_pending_proposal,
+    contains_descendant,
+    find_node_in_tree,
+    get_pending_proposal_diff,
+    reject_pending_proposal,
+)
 
 # Registry of operations for single and batch propose
 OP_HANDLERS: dict[str, Callable[..., dict]] = {}
