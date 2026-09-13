@@ -641,6 +641,9 @@ class TestWorkflowReadTools(unittest.TestCase):
         """Test direct function invocation of workflow_orient and workflow_get_node."""
         self.assertTrue(hasattr(workflow_mcp, "workflow_orient"))
         self.assertTrue(hasattr(workflow_mcp, "workflow_get_node"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_propose_tree_mutation"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_stage_contract_claims"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_execute_verification"))
         orient_fn = getattr(workflow_mcp, "workflow_orient")
         get_node_fn = getattr(workflow_mcp, "workflow_get_node")
         res = orient_fn("meta", "weak")
@@ -649,5 +652,564 @@ class TestWorkflowReadTools(unittest.TestCase):
         self.assertEqual(node_res["id"], "tree-cli-usage")
 
 
+class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
+    """Test suite for mutation, claims staging, and verification execution MCP tools."""
+
+    def setUp(self):
+        self.server = workflow_mcp.default_server
+
+    def _call_tool(self, name: str, arguments: dict):
+        req = {
+            "jsonrpc": "2.0",
+            "id": 200,
+            "method": "tools/call",
+            "params": {
+                "name": name,
+                "arguments": arguments,
+            },
+        }
+        return self.server.handle_message(req)
+
+    def test_tools_list_registers_mutation_and_execution_tools(self):
+        """Test that mutation, claims staging, and verification tools are registered on default_server."""
+        req = {"jsonrpc": "2.0", "id": 201, "method": "tools/list"}
+        resp = self.server.handle_message(req)
+        self.assertIsNotNone(resp)
+        tools = {t["name"]: t for t in resp.get("result", {}).get("tools", [])}
+        self.assertIn("workflow_propose_tree_mutation", tools)
+        self.assertIn("workflow_stage_contract_claims", tools)
+        self.assertIn("workflow_execute_verification", tools)
+
+        mut_props = tools["workflow_propose_tree_mutation"]["inputSchema"]["properties"]
+        self.assertIn("project", mut_props)
+        self.assertIn("target_node_id", mut_props)
+        self.assertIn("operation", mut_props)
+        self.assertIn("payload", mut_props)
+
+        claim_props = tools["workflow_stage_contract_claims"]["inputSchema"]["properties"]
+        self.assertIn("project", claim_props)
+        self.assertIn("node_id", claim_props)
+        self.assertIn("goal", claim_props)
+        self.assertIn("claims", claim_props)
+
+        verif_props = tools["workflow_execute_verification"]["inputSchema"]["properties"]
+        self.assertIn("project", verif_props)
+        self.assertIn("node_id", verif_props)
+
+    def test_propose_tree_mutation_set_data(self):
+        """Test workflow_propose_tree_mutation with set_data operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "root",
+                        "title": "Root",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [
+                            {
+                                "id": "leaf-node",
+                                "title": "Leaf Node",
+                                "kind": "work",
+                                "status": "weak",
+                                "data": {"pattern": "src/core.py"},
+                            }
+                        ],
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "leaf-node",
+                        "operation": "set_data",
+                        "payload": {"pain": "High memory consumption during indexing"},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertEqual(data["target_node_id"], "leaf-node")
+                proposed_file = Path(data["proposed_file"])
+                self.assertTrue(proposed_file.exists())
+                self.assertEqual(proposed_file.name, "nodes.yaml.proposed")
+                self.assertIn("+", data["diff"])
+                self.assertIn("High memory consumption during indexing", data["diff"])
+                staged_content = yaml.safe_load(proposed_file.read_text())
+                leaf = staged_content["nodes"][0]["children"][0]
+                self.assertEqual(leaf["data"]["pain"], "High memory consumption during indexing")
+                self.assertEqual(leaf["data"]["pattern"], "src/core.py")
+
+    def test_propose_tree_mutation_add_child(self):
+        """Test workflow_propose_tree_mutation with add_child operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "root",
+                        "title": "Root",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [],
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "root",
+                        "operation": "add_child",
+                        "payload": {
+                            "id": "new-worker",
+                            "title": "New Worker Service",
+                            "kind": "work",
+                            "status": "weak",
+                        },
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                proposed_file = Path(data["proposed_file"])
+                self.assertTrue(proposed_file.exists())
+                self.assertIn("new-worker", data["diff"])
+                self.assertIn("New Worker Service", data["diff"])
+                staged_content = yaml.safe_load(proposed_file.read_text())
+                children = staged_content["nodes"][0]["children"]
+                self.assertEqual(len(children), 1)
+                self.assertEqual(children[0]["id"], "new-worker")
+
+    def test_propose_tree_mutation_set_status(self):
+        """Test workflow_propose_tree_mutation with set_status operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "worker",
+                        "title": "Worker",
+                        "kind": "work",
+                        "status": "weak",
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "worker",
+                        "operation": "set_status",
+                        "payload": {"status": "strong"},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertIn("+", data["diff"])
+                self.assertIn("strong", data["diff"])
+
+    def test_propose_tree_mutation_mark_stale(self):
+        """Test workflow_propose_tree_mutation with mark_stale operation."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "tmp-proj",
+                "nodes": [
+                    {
+                        "id": "worker",
+                        "title": "Worker",
+                        "kind": "work",
+                        "status": "strong",
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "tmp-proj",
+                        "target_node_id": "worker",
+                        "operation": "mark_stale",
+                        "payload": {"notes": "Dependencies were bumped"},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertIn("stale", data["diff"])
+                self.assertIn("Dependencies were bumped", data["diff"])
+
+    def test_propose_tree_mutation_fragment(self):
+        """Test workflow_propose_tree_mutation targeting a node in a fragment file."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            (proj_dir / "fragments").mkdir(parents=True)
+            root_tree = {
+                "project": "frag-proj",
+                "nodes": [
+                    {
+                        "id": "root",
+                        "title": "Root",
+                        "kind": "group",
+                        "status": "strong",
+                        "data": {"subtree": "fragments/sub.yaml"},
+                    }
+                ],
+            }
+            frag_tree = {
+                "nodes": [
+                    {
+                        "id": "frag-leaf",
+                        "title": "Fragment Leaf",
+                        "kind": "work",
+                        "status": "weak",
+                    }
+                ]
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(root_tree))
+            (proj_dir / "fragments" / "sub.yaml").write_text(yaml.dump(frag_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_propose_tree_mutation",
+                    {
+                        "project": "frag-proj",
+                        "target_node_id": "frag-leaf",
+                        "operation": "set_status",
+                        "payload": {"status": "strong"},
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertEqual(data["target_node_id"], "frag-leaf")
+                self.assertTrue(data["proposed_file"].endswith("fragments/sub.yaml.proposed"))
+                proposed_path = Path(data["proposed_file"])
+                self.assertTrue(proposed_path.exists())
+
+    def test_propose_tree_mutation_node_not_found(self):
+        """Test workflow_propose_tree_mutation returns error for nonexistent node."""
+        resp = self._call_tool(
+            "workflow_propose_tree_mutation",
+            {
+                "project": "meta",
+                "target_node_id": "nonexistent_node_xyz",
+                "operation": "set_status",
+                "payload": {"status": "strong"},
+            },
+        )
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertTrue(result.get("isError"))
+        self.assertIn("nonexistent_node_xyz", result["content"][0]["text"])
+
+    def test_stage_contract_claims_success(self):
+        """Test workflow_stage_contract_claims writes claims JSON to claims/<node_id>.json."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "claim-proj",
+                "nodes": [
+                    {
+                        "id": "node-api",
+                        "title": "API Node",
+                        "kind": "work",
+                        "status": "weak",
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                claims = [
+                    {
+                        "id": "c1",
+                        "kind": "verify",
+                        "text": "GET /health returns HTTP 200 with status ok",
+                        "check_command": "curl -s http://localhost/health | grep ok",
+                        "source_file": "src/api.py",
+                    },
+                    {
+                        "id": "c2",
+                        "kind": "must_not",
+                        "text": "Expose internal stack traces in 500 responses",
+                    },
+                ]
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "claim-proj",
+                        "node_id": "node-api",
+                        "goal": "Implement resilient API health check endpoint",
+                        "claims": claims,
+                        "in_scope": ["health endpoint", "status response"],
+                        "out_scope": ["metrics prometheus exporter"],
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "staged")
+                self.assertEqual(data["claim_count"], 2)
+                self.assertEqual(data["goal"], "Implement resilient API health check endpoint")
+                claims_file = Path(data["claims_path"])
+                self.assertTrue(claims_file.exists())
+                self.assertEqual(claims_file.name, "node-api.json")
+
+                saved = json.loads(claims_file.read_text())
+                self.assertEqual(saved["project"], "claim-proj")
+                self.assertEqual(saved["node"], "node-api")
+                self.assertEqual(saved["goal"], "Implement resilient API health check endpoint")
+                self.assertEqual(len(saved["claims"]), 2)
+                self.assertEqual(saved["claims"][0]["decision"], "pending")
+                self.assertEqual(saved["in"], ["health endpoint", "status response"])
+                self.assertEqual(saved["out"], ["metrics prometheus exporter"])
+
+    def test_stage_contract_claims_rejects_vague_claims(self):
+        """Test workflow_stage_contract_claims rejects non-falsifiable claims."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {"project": "vague-proj", "nodes": [{"id": "n1", "title": "N", "kind": "work", "status": "weak"}]}
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "vague-proj",
+                        "node_id": "n1",
+                        "goal": "Handle tasks",
+                        "claims": [
+                            {
+                                "id": "c1",
+                                "kind": "verify",
+                                "text": "The worker should handle errors gracefully",
+                            }
+                        ],
+                    },
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertTrue(result.get("isError"))
+                err_text = result["content"][0]["text"]
+                self.assertIn("vague", err_text.lower())
+
+    def test_stage_contract_claims_schema_validation(self):
+        """Test workflow_stage_contract_claims validates input schema and values."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {"project": "val-proj", "nodes": [{"id": "n1", "title": "N", "kind": "work", "status": "weak"}]}
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                # Invalid kind
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "val-proj",
+                        "node_id": "n1",
+                        "goal": "Goal",
+                        "claims": [{"id": "c1", "kind": "invalid_kind_foo", "text": "Valid test claim"}],
+                    },
+                )
+                self.assertTrue(resp.get("result", {}).get("isError"))
+
+                # Empty claims
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "val-proj",
+                        "node_id": "n1",
+                        "goal": "Goal",
+                        "claims": [],
+                    },
+                )
+                self.assertTrue(resp.get("result", {}).get("isError"))
+
+                # Empty goal
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "val-proj",
+                        "node_id": "n1",
+                        "goal": "",
+                        "claims": [{"id": "c1", "kind": "verify", "text": "Valid test claim"}],
+                    },
+                )
+                self.assertTrue(resp.get("result", {}).get("isError"))
+
+    def test_execute_verification_passed(self):
+        """Test workflow_execute_verification on a node whose verification passes."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "pass-node",
+                        "title": "Passing Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {
+                            "verification": {
+                                "command": "python3 -c 'print(\"VERIFY_OK\")'",
+                            }
+                        },
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "pass-node"},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "passed")
+                self.assertEqual(data["exit_code"], 0)
+                self.assertIn("VERIFY_OK", data["stdout"])
+                self.assertIsInstance(data["duration_seconds"], (int, float))
+
+    def test_execute_verification_failed(self):
+        """Test workflow_execute_verification on a node whose verification fails."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "fail-node",
+                        "title": "Failing Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {
+                            "check_command": "python3 -c 'import sys; sys.stderr.write(\"FAILED_TEST\\n\"); sys.exit(2)'",
+                        },
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "fail-node"},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "failed")
+                self.assertEqual(data["exit_code"], 2)
+                self.assertIn("FAILED_TEST", data["stderr"])
+
+    def test_execute_verification_missing_command(self):
+        """Test workflow_execute_verification returns error when node has no verification configured."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "no-cmd-node",
+                        "title": "No Command Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {},
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "no-cmd-node"},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertTrue(result.get("isError"))
+                self.assertIn("no verification command", result["content"][0]["text"].lower())
+
+    def test_execute_verification_timeout(self):
+        """Test workflow_execute_verification handles command timeout gracefully."""
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "timeout-node",
+                        "title": "Timeout Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {
+                            "verification": "sleep 10",
+                        },
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "timeout-node", "timeout": 0.1},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["status"], "failed")
+                self.assertNotEqual(data["exit_code"], 0)
+                self.assertIn("timed out", data["stderr"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()
+

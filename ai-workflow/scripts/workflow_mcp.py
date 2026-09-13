@@ -2,17 +2,23 @@
 """JSON-RPC 2.0 stdio Model Context Protocol (MCP) server for ai-workflow."""
 
 import copy
+import difflib
 import inspect
 import json
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TextIO, Union
+
+import yaml
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = str(PACKAGE_ROOT / "scripts")
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
+from project_tree import fragments, model, ops as tree_ops
 from project_tree.fragments import compose_tree, walk_nodes
 from project_tree.model import (
     find_node_in_tree,
@@ -20,6 +26,13 @@ from project_tree.model import (
     list_pending_proposals,
     load_tree,
 )
+from spec_discovery.model import (
+    VALID_KINDS,
+    claims_dir,
+    is_vague,
+    save_document,
+)
+
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "ai-workflow"
@@ -399,6 +412,340 @@ def workflow_get_node(project: str, node_id: str) -> Dict[str, Any]:
     return payload
 
 
+def _diff(before: str, after: str, path: str) -> str:
+    """Compute unified diff between before and after strings."""
+    return "".join(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=f"a/{path}",
+            tofile=f"b/{path}",
+        )
+    )
+
+
+def workflow_propose_tree_mutation(
+    project: str,
+    target_node_id: str,
+    operation: str,
+    payload: Dict[str, Any],
+    fragment: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Propose an atomic mutation to the project tree (add child, update pain, reparent, attach fragment). Stages change without blocking prompt."""
+    if not project or not str(project).strip():
+        raise ValueError("Parameter 'project' must be non-empty")
+    if not target_node_id or not str(target_node_id).strip():
+        raise ValueError("Parameter 'target_node_id' must be non-empty")
+    if not operation or not str(operation).strip():
+        raise ValueError("Parameter 'operation' must be non-empty")
+    if payload is None:
+        payload = {}
+    elif not isinstance(payload, dict):
+        raise ValueError("Parameter 'payload' must be a dictionary")
+
+    raw_tree = load_tree(project)
+
+    target_path = None
+    pending_path = None
+    target_tree = None
+    fragment_rel = None
+    is_fragment = False
+
+    if fragment:
+        frag_full = fragments.resolve_fragment_path(project, fragment)
+        target_path = frag_full
+        pending_path = fragments.fragment_proposed_path(frag_full)
+        frag_data = fragments.load_fragment_file(frag_full)
+        target_tree = fragments.fragment_as_tree(frag_data, f"{project}:{fragment}")
+        fragment_rel = fragment
+        is_fragment = True
+        if not find_node_in_tree(target_tree, target_node_id):
+            raise ValueError(f"Node '{target_node_id}' not found in fragment '{fragment}'")
+    else:
+        # Check root tree first
+        if find_node_in_tree(raw_tree, target_node_id) is not None:
+            target_path = model.nodes_path(project)
+            pending_path = model.proposed_path(project)
+            target_tree = raw_tree
+            is_fragment = False
+        else:
+            # Check fragments under project fragments/ directory
+            frag_dir = model.project_dir(project) / "fragments"
+            found = False
+            if frag_dir.is_dir():
+                for frag_file in sorted(frag_dir.glob("*.yaml")):
+                    if frag_file.name.endswith(".proposed"):
+                        continue
+                    try:
+                        frag_data = fragments.load_fragment_file(frag_file)
+                        rel = f"fragments/{frag_file.name}"
+                        tree_candidate = fragments.fragment_as_tree(frag_data, f"{project}:{rel}")
+                        if find_node_in_tree(tree_candidate, target_node_id) is not None:
+                            target_path = frag_file
+                            pending_path = fragments.fragment_proposed_path(frag_file)
+                            target_tree = tree_candidate
+                            fragment_rel = rel
+                            is_fragment = True
+                            found = True
+                            break
+                    except Exception:
+                        continue
+            if not found:
+                raise ValueError(f"Node '{target_node_id}' not found in project '{project}'")
+
+    op_norm = operation.strip().lower().replace("-", "_")
+
+    if is_fragment:
+        before_text = yaml.dump(
+            fragments.tree_as_fragment(target_tree),
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+    else:
+        before_text = model.dump_tree(target_tree)
+
+    if op_norm == "set_data":
+        data_to_set = payload.get("data") if "data" in payload and isinstance(payload["data"], dict) else payload
+        proposed_tree = tree_ops.set_data(target_tree, target_node_id, data_to_set)
+    elif op_norm == "add_child":
+        child_id = payload.get("node_id") or payload.get("id")
+        if not child_id:
+            raise ValueError("add_child requires 'id' or 'node_id' in payload")
+        title = payload.get("title")
+        if not title:
+            raise ValueError("add_child requires 'title' in payload")
+        kind = payload.get("kind", "work")
+        status = payload.get("status", "weak")
+        proposed_tree = tree_ops.add_child(
+            target_tree,
+            parent_id=target_node_id,
+            node_id=child_id,
+            title=title,
+            kind=kind,
+            status=status,
+        )
+        if "data" in payload and isinstance(payload["data"], dict):
+            proposed_tree = tree_ops.set_data(proposed_tree, child_id, payload["data"])
+    elif op_norm == "set_status":
+        status = payload.get("status") if isinstance(payload, dict) else str(payload)
+        if not status:
+            raise ValueError("set_status requires 'status' in payload")
+        proposed_tree = tree_ops.set_status(target_tree, target_node_id, status)
+    elif op_norm == "mark_stale":
+        notes = payload.get("notes") if isinstance(payload, dict) else None
+        proposed_tree = tree_ops.mark_stale(target_tree, target_node_id, notes=notes)
+    elif op_norm == "clear_stale":
+        proposed_tree = tree_ops.clear_stale(target_tree, target_node_id)
+    elif op_norm == "reparent":
+        new_parent_id = payload.get("new_parent_id")
+        if not new_parent_id:
+            raise ValueError("reparent requires 'new_parent_id' in payload")
+        proposed_tree = tree_ops.reparent(target_tree, target_node_id, new_parent_id)
+    elif op_norm == "attach_subtree":
+        child_id = payload.get("node_id") or payload.get("id")
+        title = payload.get("title")
+        fragment_path = payload.get("fragment_path") or payload.get("subtree")
+        kind = payload.get("kind", "group")
+        if not child_id or not title or not fragment_path:
+            raise ValueError("attach_subtree requires 'id', 'title', and 'fragment_path' in payload")
+        proposed_tree = tree_ops.attach_subtree(target_tree, target_node_id, child_id, title, fragment_path, kind)
+    else:
+        raise ValueError(
+            f"Unsupported operation '{operation}': must be one of 'add_child', 'set_data', 'set_status', 'mark_stale'"
+        )
+
+    target_label = fragment_rel if fragment_rel else "nodes.yaml"
+    diff_label = f"{project}/{target_label}"
+
+    if is_fragment:
+        after_text = yaml.dump(
+            fragments.tree_as_fragment(proposed_tree),
+            default_flow_style=False,
+            sort_keys=False,
+            allow_unicode=True,
+        )
+        fragments.save_fragment_file(pending_path, proposed_tree)
+    else:
+        after_text = model.dump_tree(proposed_tree)
+        model.save_tree(project, proposed_tree, path=pending_path)
+
+    diff = _diff(before_text, after_text, diff_label)
+
+    return {
+        "status": "staged",
+        "project": project,
+        "target_node_id": target_node_id,
+        "operation": operation,
+        "proposed_file": str(pending_path),
+        "diff": diff,
+    }
+
+
+def workflow_stage_contract_claims(
+    project: str,
+    node_id: str,
+    goal: str,
+    claims: List[Dict[str, Any]],
+    in_scope: Optional[List[str]] = None,
+    out_scope: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Stage a set of falsifiable claims for user triage. Emits event to Cockpit and renders inline triage block."""
+    if not project or not str(project).strip():
+        raise ValueError("Parameter 'project' must be non-empty")
+    if not node_id or not str(node_id).strip():
+        raise ValueError("Parameter 'node_id' must be non-empty")
+    if not goal or not str(goal).strip():
+        raise ValueError("Parameter 'goal' must be a non-empty string")
+    if not isinstance(claims, list) or len(claims) == 0:
+        raise ValueError("Parameter 'claims' must be a non-empty list of claim objects")
+
+    formatted_claims = []
+    for i, raw_claim in enumerate(claims):
+        if not isinstance(raw_claim, dict):
+            raise ValueError(f"Claim at index {i} must be an object")
+
+        text = str(raw_claim.get("text") or "").strip()
+        if not text:
+            raise ValueError(f"Claim at index {i} is missing non-empty 'text'")
+
+        if is_vague(text):
+            claim_id_str = raw_claim.get("id") or f"c{i+1}"
+            raise ValueError(f"Claim '{claim_id_str}' contains non-falsifiable / vague language: '{text}'")
+
+        kind = raw_claim.get("kind", "verify")
+        if kind not in VALID_KINDS:
+            raise ValueError(f"Claim at index {i} has invalid kind '{kind}': must be one of {sorted(VALID_KINDS)}")
+
+        claim_id = raw_claim.get("id") or f"c{i+1}"
+        decision = raw_claim.get("decision", "pending")
+
+        entry: Dict[str, Any] = {
+            "id": claim_id,
+            "kind": kind,
+            "text": text,
+            "decision": decision,
+        }
+        if "check_command" in raw_claim:
+            entry["check_command"] = raw_claim["check_command"]
+        if "source_file" in raw_claim or "source" in raw_claim:
+            src = raw_claim.get("source_file") or raw_claim.get("source")
+            entry["source"] = src
+            if "source_file" in raw_claim:
+                entry["source_file"] = raw_claim["source_file"]
+        if "examples" in raw_claim:
+            entry["examples"] = raw_claim["examples"]
+
+        formatted_claims.append(entry)
+
+    node_title = node_id
+    try:
+        raw_tree = load_tree(project)
+        composed = compose_tree(raw_tree, project)
+        n = find_node_in_tree(composed, node_id)
+        if n and n.get("title"):
+            node_title = n["title"]
+    except Exception:
+        pass
+
+    doc: Dict[str, Any] = {
+        "project": project,
+        "node": node_id,
+        "node_id": node_id,
+        "title": node_title,
+        "goal": goal.strip(),
+        "in": list(in_scope) if in_scope is not None else [],
+        "out": list(out_scope) if out_scope is not None else [],
+        "in_scope": list(in_scope) if in_scope is not None else [],
+        "out_scope": list(out_scope) if out_scope is not None else [],
+        "claims": formatted_claims,
+        "goal_approved": None,
+    }
+
+    out_dir = claims_dir(project)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    claims_file = out_dir / f"{node_id}.json"
+    save_document(claims_file, doc)
+
+    return {
+        "status": "staged",
+        "project": project,
+        "node_id": node_id,
+        "claims_path": str(claims_file),
+        "claim_count": len(formatted_claims),
+        "goal": goal.strip(),
+    }
+
+
+def workflow_execute_verification(
+    project: str,
+    node_id: str,
+    timeout: float = 30.0,
+) -> Dict[str, Any]:
+    """Execute the verification suite for a node. Returns pass/fail status, stdout, and stderr."""
+    raw_tree = load_tree(project)
+    composed = compose_tree(raw_tree, project)
+    node = find_node_in_tree(composed, node_id)
+    if node is None:
+        raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+
+    data = node.get("data") or {}
+    command = None
+
+    verif = data.get("verification")
+    if isinstance(verif, dict):
+        command = verif.get("command") or verif.get("cmd")
+    elif isinstance(verif, str) and verif.strip():
+        command = verif.strip()
+
+    if not command:
+        command = data.get("check_command") or data.get("test_command")
+
+    if not command or not str(command).strip():
+        raise ValueError(f"Node '{node_id}' has no verification command configured in data")
+
+    command = str(command).strip()
+    repo_root = getattr(model, "REPO_ROOT", None) or model.host_root()
+
+    start_time = time.time()
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=float(timeout),
+        )
+        duration_seconds = round(time.time() - start_time, 3)
+        exit_code = proc.returncode
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+    except subprocess.TimeoutExpired as exc:
+        duration_seconds = round(time.time() - start_time, 3)
+        exit_code = -1
+        stdout = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = f"Command timed out after {timeout} seconds: {exc}"
+    except Exception as exc:
+        duration_seconds = round(time.time() - start_time, 3)
+        exit_code = -1
+        stdout = ""
+        stderr = f"Execution error: {exc}"
+
+    status = "passed" if exit_code == 0 else "failed"
+
+    return {
+        "status": status,
+        "project": project,
+        "node_id": node_id,
+        "command": command,
+        "exit_code": exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+        "duration_seconds": duration_seconds,
+    }
+
+
 def register_builtin_tools(server: MCPServer) -> None:
     """Register core workflow tools on an MCPServer instance."""
     server.register_tool(
@@ -442,6 +789,105 @@ def register_builtin_tools(server: MCPServer) -> None:
         },
         handler=workflow_get_node,
     )
+
+    server.register_tool(
+        name="workflow_propose_tree_mutation",
+        description="Propose an atomic mutation to the project tree (add child, update pain, reparent, attach fragment). Stages change without blocking prompt.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "target_node_id": {
+                    "type": "string",
+                    "description": "ID of node being modified or targeted as parent",
+                },
+                "operation": {
+                    "type": "string",
+                    "enum": ["add_child", "set_data", "set_status", "mark_stale"],
+                    "description": "Mutation operation type",
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Operation payload (e.g. child attributes, data dictionary, status)",
+                },
+            },
+            "required": ["project", "target_node_id", "operation", "payload"],
+        },
+        handler=workflow_propose_tree_mutation,
+    )
+
+    server.register_tool(
+        name="workflow_stage_contract_claims",
+        description="Stage a set of falsifiable claims for user triage. Emits event to Cockpit and renders inline triage block.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "node_id": {
+                    "type": "string",
+                    "description": "Node identifier to stage claims for",
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "High-level goal statement for the node contract",
+                },
+                "claims": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "kind": {"type": "string", "enum": ["verify", "must", "must_not"]},
+                            "text": {"type": "string"},
+                            "check_command": {"type": "string"},
+                            "source_file": {"type": "string"},
+                        },
+                        "required": ["id", "kind", "text"],
+                    },
+                    "description": "Array of falsifiable claims",
+                },
+                "in_scope": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "In-scope items list",
+                },
+                "out_scope": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Out-of-scope items list",
+                },
+            },
+            "required": ["project", "node_id", "goal", "claims"],
+        },
+        handler=workflow_stage_contract_claims,
+    )
+
+    server.register_tool(
+        name="workflow_execute_verification",
+        description="Execute the verification suite for a node. Returns pass/fail status, stdout, and stderr.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'tik')",
+                },
+                "node_id": {
+                    "type": "string",
+                    "description": "Node identifier whose verification check will be run",
+                },
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_execute_verification,
+    )
+
 
 
 # Register builtin tools on default server
