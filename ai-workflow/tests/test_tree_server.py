@@ -600,6 +600,68 @@ class TestTreeServerRestApi(unittest.TestCase):
         status, data = self._get("/api/proposals/test-proj")
         self.assertEqual(status, 200)
 
+    def _get_raw(self, path: str):
+        import urllib.request
+        url = f"http://127.0.0.1:{self.port}{path}"
+        req = urllib.request.Request(url, method="GET")
+        with urllib.request.urlopen(req) as resp:
+            content_type = resp.getheader("Content-Type")
+            body = resp.read().decode("utf-8")
+            return resp.status, content_type, body
+
+    def test_get_static_index_html(self):
+        status, content_type, body = self._get_raw("/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", content_type)
+        self.assertIn('class="status-dot connecting"', body)
+        self.assertIn('id="cockpit-layout"', body)
+        self.assertIn('id="search-input"', body)
+        self.assertIn('id="tree"', body)
+        self.assertIn('id="claims-list"', body)
+
+    def test_get_static_styles_css(self):
+        status, content_type, body = self._get_raw("/styles.css")
+        self.assertEqual(status, 200)
+        self.assertIn("text/css", content_type)
+        self.assertIn("@media (max-width: 768px)", body)
+        self.assertIn(".cockpit-layout", body)
+
+    def test_get_static_app_js(self):
+        status, content_type, body = self._get_raw("/app.js")
+        self.assertEqual(status, 200)
+        self.assertTrue("javascript" in content_type or "text/plain" in content_type)
+        self.assertIn("state = {", body)
+        self.assertIn("advanceSelection", body)
+        self.assertIn("handleApprove", body)
+        self.assertIn("handleReject", body)
+        self.assertIn("approveAllClaims", body)
+        self.assertIn("runVerification", body)
+        self.assertIn("connectSSE", body)
+        self.assertIn("EventSource", body)
+
+    def test_static_assets_dom_id_integrity(self):
+        import re
+        from html.parser import HTMLParser
+
+        class IDCollector(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.ids = set()
+            def handle_starttag(self, tag, attrs):
+                for k, v in attrs:
+                    if k == "id":
+                        self.ids.add(v)
+
+        _, _, html = self._get_raw("/index.html")
+        parser = IDCollector()
+        parser.feed(html)
+
+        _, _, js = self._get_raw("/app.js")
+        js_ids = set(re.findall(r'document\.getElementById\(["\']([^"\']+)["\']\)', js))
+
+        missing = js_ids - parser.ids
+        self.assertEqual(missing, set(), f"IDs referenced in app.js not found in index.html: {missing}")
+
 
 class TestGetProjectFingerprint(unittest.TestCase):
     """Unit tests for get_project_fingerprint change detection."""
