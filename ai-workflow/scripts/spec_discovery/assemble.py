@@ -16,6 +16,21 @@ def _section_claims(claims: list[dict[str, Any]], kind: str) -> list[str]:
     return [c["text"] for c in claims if c.get("kind") == kind]
 
 
+def _format_verify_bullet(claim: dict[str, Any]) -> str:
+    execution = claim.get("execution")
+    if not execution:
+        return claim["text"]
+
+    exec_type = execution["type"]
+    if exec_type in ("command", "pytest"):
+        command = execution["command"]
+        return f"check_type: {exec_type} | `{command}`"
+
+    file_path = execution["file"]
+    symbols = ", ".join(execution["symbols"])
+    return f"check_type: ast_symbol | `{file_path}` exports `[{symbols}]`"
+
+
 def _examples_table(claims: list[dict[str, Any]]) -> str:
     rows: list[tuple[str, str, str]] = []
     for claim in claims:
@@ -52,7 +67,9 @@ def build_markdown(data: dict[str, Any]) -> str:
 
     must = _section_claims(approved, "must")
     must_not = _section_claims(approved, "must_not")
-    verify = _section_claims(approved, "verify")
+    verify_claims = [c for c in approved if c.get("kind") == "verify"]
+    verify_bullets = [_format_verify_bullet(c) for c in verify_claims]
+    acceptance_bullets = [c["text"] for c in verify_claims]
 
     in_scope = list(data.get("in") or [])
     out_scope = list(data.get("out") or [])
@@ -77,8 +94,8 @@ def build_markdown(data: dict[str, Any]) -> str:
         "",
         "## VERIFY",
     ]
-    if verify:
-        parts.extend(f"- [ ] {item}" for item in verify)
+    if verify_bullets:
+        parts.extend(f"- [ ] {item}" for item in verify_bullets)
     else:
         parts.append("- [ ] (none)")
 
@@ -92,7 +109,7 @@ def build_markdown(data: dict[str, Any]) -> str:
             "## ACCEPTANCE",
         ]
     )
-    for item in verify:
+    for item in acceptance_bullets:
         parts.append(f"- [ ] {item}")
 
     node = data.get("node")

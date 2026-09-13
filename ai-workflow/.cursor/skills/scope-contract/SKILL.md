@@ -72,6 +72,7 @@ No extra sections. No paragraphs outside the template.
   - `check_type: command | <command>` — shell/python command expecting exit code 0
   - `check_type: ast_symbol | <file> exports [<symbols>]` — verifiable AST symbol definitions
   - Executable verification powers automated test execution via `workflow_execute_verification`.
+- **Claims JSON `execution` block** (optional, on `verify` claims only): `{ "type": "command|pytest|ast_symbol", "command": "...", "file": "...", "symbols": ["..."], "expected_exit_code": 0, "timeout_seconds": 30, "stdout_contains": "..." }`. Validated by `normalize_document`; assembled into VERIFY markdown by `build_markdown`.
 - **EXAMPLES**: 2–4 rows max. Capture the tricky cases.
 - **ACCEPTANCE**: mirror VERIFY in plain language for non-engineers when relevant.
 - Total output **under 40 lines** excluding the examples table.
