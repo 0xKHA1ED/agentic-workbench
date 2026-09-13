@@ -19,8 +19,6 @@ from project_tree.model import (
     find_parent_in_tree,
     list_pending_proposals,
     load_tree,
-    nodes_path,
-    resolve_project_name,
 )
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -312,18 +310,23 @@ def workflow_orient(project: str, filter: str = "weak") -> Dict[str, Any]:
     all_nodes = list(walk_nodes(composed.get("nodes") or []))
     total_nodes = len(all_nodes)
 
+    def _clean_node_orient(node: Dict[str, Any]) -> Dict[str, Any]:
+        entry = copy.deepcopy(node)
+        entry.pop("children", None)
+        return entry
+
     if filter_mode == "weak":
-        filtered_nodes = [copy.deepcopy(n) for n in all_nodes if n.get("status") == "weak"]
+        filtered_nodes = [_clean_node_orient(n) for n in all_nodes if n.get("status") == "weak"]
     elif filter_mode == "decayed":
         filtered_nodes = [
-            copy.deepcopy(n)
+            _clean_node_orient(n)
             for n in all_nodes
             if n.get("status") in ("decayed", "decayed_unverified")
             or bool(n.get("stale"))
             or bool((n.get("data") or {}).get("decayed"))
         ]
     else:  # "all"
-        filtered_nodes = [copy.deepcopy(n) for n in all_nodes]
+        filtered_nodes = [_clean_node_orient(n) for n in all_nodes]
 
     filtered_count = len(filtered_nodes)
 

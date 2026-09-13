@@ -397,6 +397,7 @@ class TestWorkflowReadTools(unittest.TestCase):
         # All returned nodes should have status == 'weak'
         for node in data["nodes"]:
             self.assertEqual(node.get("status"), "weak")
+            self.assertNotIn("children", node)
         # Verify strong nodes are excluded
         returned_ids = {n["id"] for n in data["nodes"]}
         self.assertNotIn("tree-cli-usage", returned_ids)
@@ -427,6 +428,86 @@ class TestWorkflowReadTools(unittest.TestCase):
         self.assertEqual(data["total_nodes"], 38)
         self.assertEqual(data["filtered_count"], 0)
         self.assertEqual(data["nodes"], [])
+
+    def test_workflow_orient_decayed_positive_matches(self):
+        """Test workflow_orient with filter decayed matches nodes by status, stale flag, or data.decayed."""
+        import tempfile
+        from pathlib import Path
+        import yaml
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "fixture-decay",
+                "nodes": [
+                    {
+                        "id": "root-decay",
+                        "title": "Root Group",
+                        "kind": "group",
+                        "status": "strong",
+                        "children": [
+                            {
+                                "id": "n-decayed",
+                                "title": "Explicit Decayed Status",
+                                "kind": "work",
+                                "status": "decayed",
+                            },
+                            {
+                                "id": "n-unverified",
+                                "title": "Decayed Unverified Status",
+                                "kind": "work",
+                                "status": "decayed_unverified",
+                            },
+                            {
+                                "id": "n-stale",
+                                "title": "Stale Flagged Node",
+                                "kind": "work",
+                                "status": "weak",
+                                "stale": True,
+                            },
+                            {
+                                "id": "n-data-decay",
+                                "title": "Data Decayed Node",
+                                "kind": "work",
+                                "status": "weak",
+                                "data": {"decayed": True},
+                            },
+                            {
+                                "id": "n-healthy-weak",
+                                "title": "Normal Weak Node",
+                                "kind": "work",
+                                "status": "weak",
+                            },
+                            {
+                                "id": "n-healthy-strong",
+                                "title": "Normal Strong Node",
+                                "kind": "work",
+                                "status": "strong",
+                            },
+                        ],
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_orient",
+                    {"project": "fixture-decay", "filter": "decayed"},
+                )
+                self.assertIsNotNone(resp)
+                result = resp.get("result", {})
+                self.assertNotIn("isError", result)
+                data = json.loads(result["content"][0]["text"])
+                self.assertEqual(data["total_nodes"], 7)
+                self.assertEqual(data["filtered_count"], 4)
+                self.assertEqual(len(data["nodes"]), 4)
+                decayed_ids = {n["id"] for n in data["nodes"]}
+                self.assertEqual(
+                    decayed_ids,
+                    {"n-decayed", "n-unverified", "n-stale", "n-data-decay"},
+                )
+                # Verify children key is omitted from oriented node entries
+                for node in data["nodes"]:
+                    self.assertNotIn("children", node)
 
     def test_workflow_orient_unknown_project(self):
         """Test workflow_orient returns error for unknown project."""
