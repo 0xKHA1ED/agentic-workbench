@@ -56,9 +56,44 @@ def _pending_path(project: str, fragment_rel: str | None) -> Path:
     return model.proposed_path(project)
 
 
+def _fragment_flag(fragment_rel: str | None) -> str:
+    return f" --fragment {fragment_rel}" if fragment_rel else ""
+
+
+def _pending_target_label(fragment_rel: str | None) -> str:
+    return fragment_rel or "nodes.yaml"
+
+
+def _pending_commands(project: str, fragment_rel: str | None) -> list[str]:
+    flag = _fragment_flag(fragment_rel)
+    return [
+        f"pending {project}{flag}",
+        f"apply {project}{flag}",
+        f"reject {project}{flag}",
+    ]
+
+
+def _print_other_pending(project: str, fragment_rel: str | None) -> None:
+    for frag, _ in model.list_pending_proposals(project):
+        if frag == fragment_rel:
+            continue
+        print(f"  {_pending_target_label(frag)}:", file=sys.stderr)
+        for cmd in _pending_commands(project, frag):
+            print(f"    python scripts/project_tree.py {cmd}", file=sys.stderr)
+
+
 def _apply_target(project: str, fragment_rel: str | None) -> int:
     pending = _pending_path(project, fragment_rel)
     if not pending.exists():
+        others = model.list_pending_proposals(project)
+        if others:
+            print(
+                f"Error: no pending proposal for {_pending_target_label(fragment_rel)}.",
+                file=sys.stderr,
+            )
+            print("Pending elsewhere — use matching --fragment:", file=sys.stderr)
+            _print_other_pending(project, fragment_rel)
+            return 1
         print("Error: no pending proposal.", file=sys.stderr)
         return 1
     proposed = yaml_load(pending)
@@ -81,6 +116,15 @@ def _apply_target(project: str, fragment_rel: str | None) -> int:
 def _reject_target(project: str, fragment_rel: str | None) -> int:
     pending = _pending_path(project, fragment_rel)
     if not pending.exists():
+        others = model.list_pending_proposals(project)
+        if others:
+            print(
+                f"Error: no pending proposal for {_pending_target_label(fragment_rel)}.",
+                file=sys.stderr,
+            )
+            print("Pending elsewhere — use matching --fragment:", file=sys.stderr)
+            _print_other_pending(project, fragment_rel)
+            return 1
         print("Error: no pending proposal.", file=sys.stderr)
         return 1
     pending.unlink()
@@ -89,17 +133,17 @@ def _reject_target(project: str, fragment_rel: str | None) -> int:
 
 
 def _interactive_confirm(project: str, fragment_rel: str | None, no_prompt: bool) -> int:
+    flag = _fragment_flag(fragment_rel)
     if no_prompt:
         print("\nProposal pending (--no-prompt).")
-        frag_flag = f" --fragment {fragment_rel}" if fragment_rel else ""
-        print(f"  Apply:  python scripts/project_tree.py apply {project}{frag_flag}")
-        print(f"  Reject: python scripts/project_tree.py reject {project}{frag_flag}")
+        print(f"  Review: python scripts/project_tree.py pending {project}{flag}")
+        print(f"  Apply:  python scripts/project_tree.py apply {project}{flag}")
+        print(f"  Reject: python scripts/project_tree.py reject {project}{flag}")
         return 0
     if not sys.stdin.isatty():
-        print("\nNon-interactive session — re-run in your terminal for y/n prompt:")
-        frag_flag = f" --fragment {fragment_rel}" if fragment_rel else ""
-        print(f"  python scripts/project_tree.py pending {project}{frag_flag}")
-        print(f"  python scripts/project_tree.py apply {project}{frag_flag}   # or reject")
+        print("\nNon-interactive session — finish in your terminal:")
+        print(f"  python scripts/project_tree.py pending {project}{flag}")
+        print(f"  python scripts/project_tree.py apply {project}{flag}   # or reject")
         return 0
     while True:
         try:
@@ -121,9 +165,15 @@ def _propose(
     summary: str | None = None,
     no_prompt: bool = False,
 ) -> int:
-    pending = _pending_path(project, fragment_rel)
-    if pending.exists():
-        print("Error: a proposal is already pending. Run `apply` or `reject` first.", file=sys.stderr)
+    existing = model.list_pending_proposals(project)
+    if existing:
+        print("Error: resolve pending proposal(s) before proposing again.", file=sys.stderr)
+        for frag, _ in existing:
+            flag = _fragment_flag(frag)
+            print(f"  {_pending_target_label(frag)}:", file=sys.stderr)
+            print(f"    python scripts/project_tree.py pending {project}{flag}", file=sys.stderr)
+            print(f"    python scripts/project_tree.py apply {project}{flag}", file=sys.stderr)
+            print(f"    python scripts/project_tree.py reject {project}{flag}", file=sys.stderr)
         return 1
 
     current, _ = _load_target(project, fragment_rel)
@@ -141,6 +191,7 @@ def _propose(
         print("No changes.")
         return 0
 
+    pending = _pending_path(project, fragment_rel)
     _save_target(project, fragment_rel, proposed, pending)
     if summary:
         print(f"Summary: {summary}\n")
@@ -225,10 +276,12 @@ def cmd_show(args: argparse.Namespace) -> int:
     else:
         tree = _load_composed(args.project)
         print(model.ascii_tree(tree, composed=True))
-    pending = _pending_path(args.project, args.fragment)
-    if pending.exists():
-        target = "fragment" if args.fragment else "root"
-        print(f"\n⚠ Pending proposal ({target}) — run apply or reject")
+    for frag, _ in model.list_pending_proposals(args.project):
+        flag = _fragment_flag(frag)
+        print(
+            f"\n⚠ Pending on {_pending_target_label(frag)} — "
+            f"pending / apply / reject {args.project}{flag}"
+        )
     return 0
 
 
@@ -236,6 +289,14 @@ def cmd_pending(args: argparse.Namespace) -> int:
     pending = _pending_path(args.project, args.fragment)
     current, _ = _load_target(args.project, args.fragment)
     if not pending.exists():
+        others = model.list_pending_proposals(args.project)
+        if others:
+            print(f"No pending proposal for {_pending_target_label(args.fragment)}.")
+            print("Pending elsewhere:")
+            for frag, _ in others:
+                flag = _fragment_flag(frag)
+                print(f"  {_pending_target_label(frag)}: python scripts/project_tree.py pending {args.project}{flag}")
+            return 0
         print("No pending proposal.")
         return 0
     proposed = yaml_load(pending)
@@ -324,7 +385,11 @@ def cmd_propose(args: argparse.Namespace) -> int:
 
     if op == "set-data":
         node_id = args.rest[0]
-        data = json.loads(args.rest[1])
+        try:
+            data = json.loads(args.rest[1])
+        except json.JSONDecodeError as e:
+            print(f"Error: invalid JSON for set-data: {e}", file=sys.stderr)
+            return 1
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-data", [node_id, data]), no_prompt=args.no_prompt)
 
     if op == "set-all-weak":

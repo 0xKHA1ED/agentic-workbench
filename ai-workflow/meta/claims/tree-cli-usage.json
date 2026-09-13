@@ -2,50 +2,115 @@
   "project": "meta",
   "node": "tree-cli-usage",
   "title": "Propose / diff / apply workflow",
-  "goal": "AI mutates the tree only through CLI proposals; user approves diffs before persistence.",
+  "goal": "AI mutates the tree only through staged CLI proposals; user reviews diffs and explicitly applies or rejects before any live yaml changes.",
   "in": [
-    "project_tree.py propose/apply/reject/pending",
-    "nodes.yaml and fragments/*.yaml targets",
-    "unified diff output"
+    "project_tree.py propose / pending / apply / reject",
+    "root nodes.yaml and fragments/*.yaml",
+    "unified diff output",
+    "agent --no-prompt + terminal handoff"
   ],
   "out": [
     "direct YAML edits by AI",
-    "auto-apply without user gate"
+    "auto-apply without user gate",
+    "concurrent pending proposals on root and fragments"
   ],
   "claims": [
     {
       "id": "c1",
       "kind": "verify",
-      "text": "`propose <project> <op> ... --no-prompt` writes `*.proposed` and prints a unified diff without modifying the live tree file",
-      "source": "scripts/project_tree/cli.py:117-144",
-      "rationale": "Core safety gate — AI authors, CLI stages"
+      "text": "`propose` writes only to `*.proposed` (root: `nodes.yaml.proposed`; fragment: `fragments/foo.yaml.proposed`) and prints a unified diff \u2014 live yaml is untouched until `apply`",
+      "source": "scripts/project_tree/cli.py:167-199",
+      "rationale": "Core safety gate",
+      "decision": "approved"
     },
     {
       "id": "c2",
       "kind": "verify",
-      "text": "`apply <project>` promotes `*.proposed` to the target yaml and deletes the pending file; `reject` deletes pending without applying",
-      "source": "scripts/project_tree/cli.py:59-87",
-      "rationale": "User-controlled persistence"
+      "text": "`apply` copies staged content into the live target and deletes `*.proposed`; `reject` deletes `*.proposed` without touching the live file",
+      "source": "scripts/project_tree/cli.py:94-132",
+      "rationale": "Explicit user persistence",
+      "decision": "approved"
     },
     {
       "id": "c3",
       "kind": "verify",
-      "text": "A second `propose` while pending fails with an error directing user to apply or reject first",
-      "source": "scripts/project_tree/cli.py:125-126",
-      "rationale": "No silent overwrite of in-flight proposals"
+      "text": "Only one pending proposal per project at a time \u2014 if root or any fragment is staged, a new `propose` fails and lists every pending target with pending/apply/reject commands",
+      "source": "scripts/project_tree/cli.py:168-177",
+      "rationale": "Prevents apply/reject confusion across targets",
+      "decision": "approved"
     },
     {
       "id": "c4",
       "kind": "verify",
-      "text": "`propose --fragment fragments/foo.yaml` stages mutations against that fragment file (same apply/reject/pending flags)",
-      "source": "scripts/project_tree/cli.py:38-56",
-      "rationale": "Fragment-aware workflow documented in project-tree skill"
+      "text": "`apply` and `reject` require the same `--fragment` flag as `propose`; applying the wrong target prints which fragment/root is actually pending",
+      "source": "scripts/project_tree/cli.py:94-132",
+      "rationale": "Clear error when user mismatches target",
+      "decision": "approved"
     },
     {
       "id": "c5",
+      "kind": "verify",
+      "text": "`pending <project> [--fragment \u2026]` reprints the staged diff against the current live tree for that target",
+      "source": "scripts/project_tree/cli.py:281-295",
+      "rationale": "Review without re-running propose",
+      "decision": "approved"
+    },
+    {
+      "id": "c6",
+      "kind": "verify",
+      "text": "`show <project>` lists every pending target (root and fragments) with the matching pending/apply/reject commands",
+      "source": "scripts/project_tree/cli.py:268-276",
+      "rationale": "Orient step surfaces in-flight work",
+      "decision": "approved"
+    },
+    {
+      "id": "c7",
+      "kind": "verify",
+      "text": "Agent mode: `propose \u2026 --no-prompt` stages and prints pending/apply/reject commands; non-interactive stdin without `--no-prompt` also stages but tells user to finish in terminal (no fake y/n)",
+      "source": "scripts/project_tree/cli.py:135-152",
+      "rationale": "Cursor chat handoff is explicit",
+      "decision": "approved"
+    },
+    {
+      "id": "c8",
+      "kind": "verify",
+      "text": "No-op proposals (`No changes.`) exit without creating `*.proposed`",
+      "source": "scripts/project_tree/cli.py:190-192",
+      "rationale": "Avoid empty pending files",
+      "decision": "approved"
+    },
+    {
+      "id": "c9",
+      "kind": "verify",
+      "text": "Invalid operations (unknown op, bad JSON in `set-data`, missing batch payload) fail before staging any `*.proposed`",
+      "source": "scripts/project_tree/cli.py:181-184,385-388",
+      "rationale": "Errors never leave partial pending state",
+      "decision": "approved"
+    },
+    {
+      "id": "c10",
+      "kind": "verify",
+      "text": "`propose <project> batch --file batch.json --no-prompt` applies all ops atomically in one staged diff via `apply_batch`",
+      "source": "scripts/project_tree/ops.py:277-284",
+      "rationale": "Multi-step tree edits stay one review gate",
+      "decision": "approved"
+    },
+    {
+      "id": "c11",
       "kind": "must",
-      "text": "project-tree SKILL.md documents the mandatory workflow: show → propose --no-prompt → user y/n → apply/reject",
-      "source": ".cursor/skills/project-tree/SKILL.md:148-154"
+      "text": "project-tree SKILL.md documents: show \u2192 propose --no-prompt \u2192 pending/apply/reject with matching --fragment, one pending per project, batch support",
+      "source": ".cursor/skills/project-tree/SKILL.md:148-162",
+      "decision": "approved"
+    },
+    {
+      "id": "c12",
+      "kind": "must_not",
+      "text": "AI agents never edit `nodes.yaml`, `fragments/*.yaml`, or `*.proposed` directly \u2014 all mutations go through `project_tree.py propose`",
+      "source": ".cursor/skills/project-tree/SKILL.md:13",
+      "rationale": "Enforced by skill, not code \u2014 user catches violations in review",
+      "decision": "approved"
     }
-  ]
+  ],
+  "goal_approved": true,
+  "updated": "2026-09-13"
 }

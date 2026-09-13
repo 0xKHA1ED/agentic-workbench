@@ -147,11 +147,19 @@ python scripts/project_tree.py propose my-platform --fragment fragments/certs.ya
 
 ## Workflow (mandatory)
 
-1. `show` or tree viewer (composed view)
+1. `show` or tree viewer (composed view) — note any `⚠ Pending` lines
 2. Discuss structure — names from user unless asked
-3. **`propose ... --no-prompt`** — AI runs diff only
-4. User y/n in terminal or `apply`/`reject`
+3. **`propose ... --no-prompt`** — AI stages diff only (never edit yaml by hand)
+4. User reviews in terminal:
+   - `pending <project> [--fragment …]` — reprint diff
+   - `apply` or `reject` with the **same** `--fragment` flag as propose
 5. `validate-patterns --recursive` after codebase moves
+
+**Agent sessions:** always `--no-prompt`. Cursor chat is non-interactive — user finishes apply/reject in terminal.
+
+**One pending per project:** root and fragment proposals share a single gate — resolve any pending before the next `propose`.
+
+**Batch:** `propose <project> batch --file batch.json --no-prompt` — atomic multi-op diff (same apply/reject gate).
 
 ## Reference
 

@@ -64,6 +64,22 @@ def proposed_path(name: str) -> Path:
     return project_dir(name) / "nodes.yaml.proposed"
 
 
+def list_pending_proposals(name: str) -> list[tuple[str | None, Path]]:
+    """Return (fragment_rel or None for root, pending path) for each staged proposal."""
+    name = resolve_project_name(name)
+    base = project_dir(name)
+    pending: list[tuple[str | None, Path]] = []
+    root = proposed_path(name)
+    if root.exists():
+        pending.append((None, root))
+    frag_dir = base / "fragments"
+    if frag_dir.is_dir():
+        for path in sorted(frag_dir.glob("*.yaml.proposed")):
+            rel = f"fragments/{path.name.removesuffix('.proposed')}"
+            pending.append((rel, path))
+    return pending
+
+
 def load_tree(name: str) -> dict[str, Any]:
     path = nodes_path(name)
     if not path.exists():

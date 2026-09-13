@@ -1,7 +1,4 @@
-# Fragment: orient
-constraints:
-  codebase:
-  - .
+# Project tree fragment — managed by scripts/project_tree.py
 nodes:
 - id: orient-skill
   title: project-tree skill
@@ -13,9 +10,9 @@ nodes:
   - id: tree-cli-usage
     title: Propose / diff / apply workflow
     kind: work
-    status: weak
+    status: strong
     data:
-      pattern: .cursor/skills/project-tree/SKILL.md
+      pattern: scripts/project_tree/cli.py
   - id: tree-fragments-doc
     title: Fragment authoring docs
     kind: work
@@ -32,9 +29,9 @@ nodes:
   - id: viewer-ui
     title: Web UI render + weak/strong badges
     kind: work
-    status: weak
+    status: strong
     data:
-      pattern: tools/tree-viewer/app.js
+      pattern: tools/tree-viewer/app.js,tools/tree-viewer/styles.css,tools/tree-viewer/index.html
   - id: viewer-server
     title: tree_server compose API
     kind: work
@@ -53,3 +50,6 @@ nodes:
   status: weak
   data:
     pattern: meta/docs/DAILY-LOOP.md
+constraints:
+  codebase:
+  - .

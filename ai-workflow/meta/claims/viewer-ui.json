@@ -1,0 +1,116 @@
+{
+  "project": "meta",
+  "node": "viewer-ui",
+  "title": "Web UI render + weak/strong badges",
+  "goal": "Read-only tree viewer renders composed project data with clear weak/strong visual signals for session orient.",
+  "in": [
+    "GET /api/projects and GET /api/tree/<project> JSON",
+    "tools/tree-viewer/index.html shell",
+    "app.js render + styles.css badges"
+  ],
+  "out": [
+    "tree mutations from the browser",
+    "editing node status in the UI",
+    "fragment pending detection (viewer-server owns API)"
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "verify",
+      "text": "Loads project list into a dropdown and fetches `/api/tree/<project>` to render the composed `nodes` tree recursively",
+      "source": "tools/tree-viewer/app.js:77-107",
+      "rationale": "Core orient surface",
+      "decision": "approved"
+    },
+    {
+      "id": "c2",
+      "kind": "verify",
+      "text": "`status: weak` nodes show a rose badge (`.badge-status-weak`) AND a pink row highlight with left accent (`data-status=\"weak\"`, `.node-weak`)",
+      "source": "tools/tree-viewer/app.js:26-35",
+      "rationale": "Weak nodes must pop for pick-weak orient",
+      "decision": "approved"
+    },
+    {
+      "id": "c3",
+      "kind": "verify",
+      "text": "`status: strong` nodes show a teal badge (`.badge-status-strong` in styles.css)",
+      "source": "tools/tree-viewer/styles.css:231",
+      "rationale": "Trusted areas visually distinct from weak",
+      "decision": "approved"
+    },
+    {
+      "id": "c4",
+      "kind": "verify",
+      "text": "Workflow statuses (`spec_ready`, `spec_approved`, `done`, `discussing`, etc.) each map to a distinct badge color class derived from `badge-status-<status>`",
+      "source": "tools/tree-viewer/app.js:27",
+      "rationale": "Status model readable at a glance",
+      "decision": "approved"
+    },
+    {
+      "id": "c5",
+      "kind": "verify",
+      "text": "Stale nodes show a `stale` badge and amber row background (`.node.stale > .node-row`)",
+      "source": "tools/tree-viewer/app.js:25,43",
+      "rationale": "Obsolete branches visible without deleting",
+      "decision": "approved"
+    },
+    {
+      "id": "c6",
+      "kind": "verify",
+      "text": "Clicking a parent row toggles child visibility (\u25bc/\u25b6) via `.children.collapsed`",
+      "source": "tools/tree-viewer/app.js:64-74",
+      "rationale": "Large trees navigable",
+      "decision": "approved"
+    },
+    {
+      "id": "c7",
+      "kind": "verify",
+      "text": "Refresh button and project dropdown re-fetch and re-render the tree; URL updates to `?project=<name>`",
+      "source": "tools/tree-viewer/app.js:106,113-114",
+      "rationale": "Shareable / bookmarkable project view",
+      "decision": "approved"
+    },
+    {
+      "id": "c8",
+      "kind": "verify",
+      "text": "Root `constraints` render as chips below the header",
+      "source": "tools/tree-viewer/app.js:54-61",
+      "rationale": "Philosophy / daily-loop visible during orient",
+      "decision": "approved"
+    },
+    {
+      "id": "c9",
+      "kind": "verify",
+      "text": "When API returns `pending: true`, the pending banner is shown (`#pending-banner`); hidden otherwise",
+      "source": "tools/tree-viewer/app.js:102",
+      "rationale": "User knows CLI approval is blocking the view",
+      "decision": "approved"
+    },
+    {
+      "id": "c10",
+      "kind": "verify",
+      "text": "API `compose_error` (if present) appears in the meta line under the project title",
+      "source": "tools/tree-viewer/app.js:98-100",
+      "rationale": "Broken fragment links surface in UI",
+      "decision": "approved"
+    },
+    {
+      "id": "c11",
+      "kind": "verify",
+      "text": "Node `data` fields render as inline tags; tree text is HTML-escaped before insertion (no raw innerHTML from yaml strings)",
+      "source": "tools/tree-viewer/app.js:9-19",
+      "rationale": "Safe rendering of user-authored tree content",
+      "decision": "approved"
+    },
+    {
+      "id": "c12",
+      "kind": "must_not",
+      "text": "The viewer exposes no controls to edit tree structure or node status \u2014 read-only orient surface only",
+      "source": "tools/tree-viewer/index.html",
+      "rationale": "Mutations stay in project_tree CLI",
+      "decision": "approved"
+    }
+  ],
+  "goal_approved": true,
+  "updated": "2026-09-13"
+}

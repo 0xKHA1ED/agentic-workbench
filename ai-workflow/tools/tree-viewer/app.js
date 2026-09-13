@@ -6,6 +6,14 @@ const titleEl = document.getElementById("project-title");
 const constraintsEl = document.getElementById("constraints");
 const pendingBanner = document.getElementById("pending-banner");
 
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatValue(v) {
   if (Array.isArray(v)) return v.join(", ");
   if (typeof v === "object" && v !== null) return JSON.stringify(v);
@@ -15,7 +23,10 @@ function formatValue(v) {
 function renderData(data) {
   if (!data || typeof data !== "object") return "";
   return Object.entries(data)
-    .map(([k, v]) => `<span class="data-tag"><strong>${k}:</strong> ${formatValue(v)}</span>`)
+    .map(
+      ([k, v]) =>
+        `<span class="data-tag"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(formatValue(v))}</span>`
+    )
     .join("");
 }
 
@@ -30,19 +41,24 @@ function renderNode(node, depth = 0) {
     ? `<div class="children">${children.map((c) => renderNode(c, depth + 1)).join("")}</div>`
     : "";
 
+  const title = escapeHtml(node.title || node.id);
+  const nodeId = escapeHtml(node.id);
+  const kind = escapeHtml(node.kind || "?");
+  const status = escapeHtml(node.status || "empty");
+
   return `
     <div class="node${stale}${weak}" data-depth="${depth}">
-      <div class="node-row" data-toggle data-status="${node.status || "empty"}">
+      <div class="node-row" data-toggle data-status="${status}">
         <span class="toggle${hasChildren ? "" : " empty"}">${hasChildren ? "▼" : ""}</span>
         <div class="node-body">
           <div class="node-title-line">
-            <span class="node-title">${node.title || node.id}</span>
-            <span class="node-id">${node.id}</span>
-            <span class="badge badge-kind">${node.kind || "?"}</span>
-            <span class="badge ${statusClass}">${node.status || "empty"}</span>
+            <span class="node-title">${title}</span>
+            <span class="node-id">${nodeId}</span>
+            <span class="badge badge-kind">${kind}</span>
+            <span class="badge ${statusClass}">${status}</span>
             ${node.stale ? '<span class="badge badge-stale">stale</span>' : ""}
           </div>
-          ${node.notes ? `<p class="node-notes">${node.notes}</p>` : ""}
+          ${node.notes ? `<p class="node-notes">${escapeHtml(node.notes)}</p>` : ""}
           ${node.data ? `<div class="node-data">${renderData(node.data)}</div>` : ""}
         </div>
       </div>
