@@ -39,11 +39,24 @@ from spec_clarify.model import (
     clarify_blocks_claims,
     clarify_paths,
     complete_clarify,
+    constitution_excerpt,
     constitution_path,
     ensure_decisions,
     infer_taxonomy_mode,
     load_decisions,
 )
+from spec_analyze.model import (
+    AnalyzeAbort,
+    analyze_blocks_implement,
+    analyze_blocks_verification,
+    analyze_paths,
+    complete_analyze,
+    load_status,
+    run_analyze,
+    skip_analyze,
+)
+from spec_checklist.model import scan_checklist_status
+from task_breakdown.model import tasks_paths as task_breakdown_paths
 
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -441,7 +454,48 @@ def workflow_get_node(project: str, node_id: str) -> Dict[str, Any]:
         payload["clarify"]["status"] = None
         payload["clarify"]["questions_asked"] = 0
 
+    a_paths = analyze_paths(project, node_id)
+    payload["analyze"] = {
+        **a_paths,
+        "status": None,
+        "findings_count": 0,
+        "critical_count": 0,
+        "blocks_implement": analyze_blocks_implement(project, node_id),
+    }
+    status_path = Path(a_paths["status_json"] or "")
+    if status_path.is_file():
+        try:
+            status_doc = load_status(status_path)
+            payload["analyze"]["status"] = status_doc.get("status")
+            payload["analyze"]["critical_count"] = status_doc.get("critical_count", 0)
+        except (ValueError, json.JSONDecodeError):
+            payload["analyze"]["status"] = "invalid"
+    findings_path = Path(a_paths["findings_json"] or "")
+    if findings_path.is_file():
+        try:
+            with findings_path.open() as f:
+                findings_doc = json.load(f)
+            if isinstance(findings_doc, dict) and isinstance(findings_doc.get("findings"), list):
+                payload["analyze"]["findings_count"] = len(findings_doc["findings"])
+                payload["analyze"]["critical_count"] = findings_doc.get(
+                    "critical_count", payload["analyze"]["critical_count"]
+                )
+        except (OSError, json.JSONDecodeError, ValueError):
+            pass
+
     return payload
+
+
+def workflow_get_constitution(project: str) -> Dict[str, Any]:
+    """Return resolved constitution path and excerpt for a project (missing is not an error)."""
+    const = constitution_path(project)
+    excerpt = constitution_excerpt(project)
+    return {
+        "project": project,
+        "constitution_path": str(const) if const else None,
+        "constitution_excerpt": excerpt,
+        "exists": const is not None,
+    }
 
 
 def workflow_clarify_context(project: str, node_id: str) -> Dict[str, Any]:
@@ -449,10 +503,7 @@ def workflow_clarify_context(project: str, node_id: str) -> Dict[str, Any]:
     node_payload = workflow_get_node(project, node_id)
     clarify = node_payload.get("clarify") or {}
     const = constitution_path(project)
-    constitution_excerpt = None
-    if const:
-        text = const.read_text(encoding="utf-8")
-        constitution_excerpt = text[:4000] + ("…" if len(text) > 4000 else "")
+    excerpt = constitution_excerpt(project)
     return {
         "project": project,
         "node_id": node_id,
@@ -465,8 +516,8 @@ def workflow_clarify_context(project: str, node_id: str) -> Dict[str, Any]:
             "clarifications_md": clarify.get("clarifications_md"),
             "decisions_json": clarify.get("decisions_json"),
         },
-        "constitution_path": clarify.get("constitution_path"),
-        "constitution_excerpt": constitution_excerpt,
+        "constitution_path": str(const) if const else None,
+        "constitution_excerpt": excerpt,
         "session": {
             "status": clarify.get("status"),
             "questions_asked": clarify.get("questions_asked", 0),
@@ -535,6 +586,119 @@ def workflow_clarify_complete(
         "decisions_json": paths["decisions_json"],
         "next": "workflow_stage_contract_claims (read decisions; do not re-ask settled questions)",
     }
+
+
+def workflow_analyze_context(project: str, node_id: str) -> Dict[str, Any]:
+    """Resolve analyze artifact paths and current run status for a node (read-only)."""
+    node_payload = workflow_get_node(project, node_id)
+    analyze = node_payload.get("analyze") or {}
+    return {
+        "project": project,
+        "node_id": node_id,
+        "node_title": node_payload.get("title"),
+        "paths": {
+            "findings_json": analyze.get("findings_json"),
+            "status_json": analyze.get("status_json"),
+            "claims_json": analyze.get("claims_json"),
+            "contract_md": analyze.get("contract_md"),
+            "decisions_json": analyze.get("decisions_json"),
+            "constitution_path": analyze.get("constitution_path"),
+            "plan_md": analyze.get("plan_md"),
+            "tasks_md": analyze.get("tasks_md"),
+        },
+        "claims_exists": Path(str(analyze.get("claims_json") or "")).is_file(),
+        "contract_exists": Path(str(analyze.get("contract_md") or "")).is_file(),
+        "session": {
+            "status": analyze.get("status"),
+            "findings_count": analyze.get("findings_count", 0),
+            "critical_count": analyze.get("critical_count", 0),
+        },
+        "blocks_implement": analyze.get("blocks_implement"),
+        "next": "workflow_analyze_run then workflow_analyze_complete, or workflow_analyze_skip",
+    }
+
+
+def workflow_analyze_run(project: str, node_id: str) -> Dict[str, Any]:
+    """Read-only vs claims/contract/tree/constitution: compute findings and persist analyze artifacts only."""
+    try:
+        composed = compose_tree(load_tree(project), project)
+        if find_node_in_tree(composed, node_id) is None:
+            raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+    except ValueError:
+        raise
+    except Exception:
+        pass
+    try:
+        doc = run_analyze(project, node_id)
+    except AnalyzeAbort as exc:
+        raise ValueError(str(exc)) from exc
+    paths = analyze_paths(project, node_id)
+    return {
+        "status": "in_progress",
+        "project": project,
+        "node_id": node_id,
+        "findings_json": paths["findings_json"],
+        "status_json": paths["status_json"],
+        "findings": doc.get("findings") or [],
+        "findings_count": len(doc.get("findings") or []),
+        "critical_count": doc.get("critical_count", 0),
+        "coverage": doc.get("coverage"),
+        "checks": doc.get("checks"),
+        "note": "CRITICAL findings do not hard-block /implement after complete or skip.",
+    }
+
+
+def workflow_analyze_complete(
+    project: str,
+    node_id: str,
+    status: str = "complete",
+) -> Dict[str, Any]:
+    """Mark analyze complete (runs analysis first) or skipped. Does not edit spec artifacts."""
+    if status not in ("complete", "skipped"):
+        raise ValueError("status must be 'complete' or 'skipped'")
+    try:
+        doc = complete_analyze(project, node_id, status=status)
+    except AnalyzeAbort as exc:
+        raise ValueError(str(exc)) from exc
+    paths = analyze_paths(project, node_id)
+    return {
+        "status": doc["status"],
+        "project": project,
+        "node_id": node_id,
+        "findings_json": paths["findings_json"],
+        "status_json": paths["status_json"],
+        "critical_count": doc.get("critical_count", 0),
+        "next": "/implement (CRITICAL findings do not hard-block after complete/skip)",
+    }
+
+
+def workflow_analyze_skip(project: str, node_id: str) -> Dict[str, Any]:
+    """Skip analyze without requiring claims or an assembled contract."""
+    return workflow_analyze_complete(project, node_id, status="skipped")
+
+
+def workflow_tasks_paths(project: str, node_id: str) -> Dict[str, Any]:
+    """Resolve tasks.md path and related claims/spec artifacts for a node."""
+    paths = task_breakdown_paths(project, node_id)
+    return {
+        "project": project,
+        "node_id": node_id,
+        **paths,
+        "tasks_exists": Path(paths["tasks_md"]).is_file(),
+        "claims_exists": Path(paths["claims_json"]).is_file(),
+        "spec_exists": Path(paths["spec_md"]).is_file(),
+    }
+
+
+def workflow_checklist_status(project: str, node_id: str) -> Dict[str, Any]:
+    """Read-only requirements-checklist checkbox counts. Never writes markers."""
+    if not project or not str(project).strip():
+        raise ValueError("Parameter 'project' must be non-empty")
+    if not node_id or not str(node_id).strip():
+        raise ValueError("Parameter 'node_id' must be non-empty")
+    payload = scan_checklist_status(project, node_id)
+    payload["read_only"] = True
+    return payload
 
 
 def _diff(before: str, after: str, path: str) -> str:
@@ -832,6 +996,10 @@ def workflow_execute_verification(
     if node is None:
         raise ValueError(f"Node '{node_id}' not found in project '{project}'")
 
+    block_msg = analyze_blocks_verification(project, node_id)
+    if block_msg:
+        raise ValueError(block_msg)
+
     data = node.get("data") or {}
     try:
         spec = verification_spec_from_node_data(data)
@@ -898,6 +1066,22 @@ def register_builtin_tools(server: MCPServer) -> None:
     )
 
     server.register_tool(
+        name="workflow_get_constitution",
+        description="Resolve constitution.md path and excerpt for a project (project dir, then meta/, then host). Missing file returns exists=false — not an error.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project initiative name (e.g. 'meta')",
+                },
+            },
+            "required": ["project"],
+        },
+        handler=workflow_get_constitution,
+    )
+
+    server.register_tool(
         name="workflow_clarify_context",
         description="Load clarify session paths, taxonomy mode (full vs tooling), constitution excerpt, and prior decisions for a node.",
         input_schema={
@@ -953,6 +1137,98 @@ def register_builtin_tools(server: MCPServer) -> None:
             "required": ["project", "node_id"],
         },
         handler=workflow_clarify_complete,
+    )
+
+    server.register_tool(
+        name="workflow_analyze_context",
+        description="Load analyze paths (findings/status/claims/contract) and current run status. Read-only.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_analyze_context,
+    )
+
+    server.register_tool(
+        name="workflow_analyze_run",
+        description="Read-only analyze: compute claims/contract findings. Writes analyze/*.json only — never claims, contract, tree, or constitution.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_analyze_run,
+    )
+
+    server.register_tool(
+        name="workflow_analyze_complete",
+        description="Finish analyze (complete runs analysis first; skipped does not require artifacts). CRITICAL findings do not hard-block /implement.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["complete", "skipped"],
+                    "default": "complete",
+                },
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_analyze_complete,
+    )
+
+    server.register_tool(
+        name="workflow_analyze_skip",
+        description="Skip spec-analyze for a node (persists skipped status). Allows /implement without a findings file.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_analyze_skip,
+    )
+
+    server.register_tool(
+        name="workflow_tasks_paths",
+        description="Resolve <project>/tasks/<node-id>.md and related claims/spec paths for task-breakdown / scoped implement.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_tasks_paths,
+    )
+
+    server.register_tool(
+        name="workflow_checklist_status",
+        description=(
+            "Read-only requirements-checklist checkbox counts for a node (implement gate). "
+            "Does not modify [ ] / [x] markers. Unchecked custom checklists block /implement."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_checklist_status,
     )
 
     server.register_tool(

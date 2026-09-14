@@ -8,8 +8,8 @@ Installable agentic coding workflow for Cursor — orient, understand, spec, imp
 
 ```
 ai-workflow/
-├── .cursor/skills/     # project-tree, scope-contract, spec-discovery
-├── scripts/            # project_tree CLI, spec_discovery CLI, tree_server
+├── .cursor/skills/     # idea-assess, constitution, project-tree, scope-contract, spec-clarify, requirements-checklist, technical-plan, task-breakdown, spec-discovery
+├── scripts/            # project_tree, spec_clarify, idea_assess, plan_paths, task_breakdown, spec_discovery, tree_server
 ├── tools/tree-viewer/  # Web UI
 ├── meta/               # This package's own project tree (L1 + fragments)
 ├── examples/           # Reference project trees (e.g. fragment-demo)
@@ -34,10 +34,16 @@ python3 scripts/tree_server.py   # → http://127.0.0.1:8765/?project=meta
 
 | Skill | Invoke | Purpose |
 |-------|--------|---------|
+| `idea-assess` | `/idea-assess` | Go/kill funnel before attaching tree nodes |
+| `constitution` | `/constitution` | MUST/SHOULD principles; CREATE or REVIEW `constitution.md` |
 | `project-tree` | `/project-tree` | Tree mutations via CLI (propose → diff → y/n) |
 | `scope-contract` | `/scope-contract` | Falsifiable specs (GOAL/IN/OUT/VERIFY) |
 | `spec-clarify` | `/spec-clarify` | Requirements clarification before claims |
+| `technical-plan` | `/technical-plan` | Optional HOW plan.md (not the scope contract) |
+| `task-breakdown` | `/task-breakdown` | Phased tasks.md from claims/spec; scoped implement |
 | `spec-discovery` | `/spec-discovery` | Claims JSON → triage → assemble spec |
+| `spec-analyze` | `/spec-analyze` | Read-only claims/contract gate before `/implement` |
+| `requirements-checklist` | `/requirements-checklist` | Unit tests for requirements; user-only `[x]` before `/implement` |
 
 ## Project discovery
 

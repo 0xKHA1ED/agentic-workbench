@@ -391,10 +391,13 @@ class TestWorkflowReadTools(unittest.TestCase):
         result = resp.get("result", {})
         self.assertNotIn("isError", result)
         data = json.loads(result["content"][0]["text"])
+        all_resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "all"})
+        all_data = json.loads(all_resp["result"]["content"][0]["text"])
+        strong_count = sum(1 for n in all_data["nodes"] if n.get("status") == "strong")
         self.assertEqual(data["project"], "meta")
-        self.assertEqual(data["total_nodes"], 38)
-        self.assertEqual(data["filtered_count"], 36)
-        self.assertEqual(len(data["nodes"]), 36)
+        self.assertEqual(data["total_nodes"], all_data["total_nodes"])
+        self.assertEqual(data["filtered_count"], data["total_nodes"] - strong_count)
+        self.assertEqual(len(data["nodes"]), data["filtered_count"])
         self.assertEqual(data["pending_proposals"], [])
         # All returned nodes should have status == 'weak'
         for node in data["nodes"]:
@@ -413,9 +416,9 @@ class TestWorkflowReadTools(unittest.TestCase):
         result = resp.get("result", {})
         self.assertNotIn("isError", result)
         data = json.loads(result["content"][0]["text"])
-        self.assertEqual(data["total_nodes"], 38)
-        self.assertEqual(data["filtered_count"], 38)
-        self.assertEqual(len(data["nodes"]), 38)
+        self.assertEqual(data["filtered_count"], data["total_nodes"])
+        self.assertEqual(len(data["nodes"]), data["total_nodes"])
+        self.assertGreater(data["total_nodes"], 0)
         returned_ids = {n["id"] for n in data["nodes"]}
         self.assertIn("tree-cli-usage", returned_ids)
         self.assertIn("viewer-ui", returned_ids)
@@ -427,7 +430,9 @@ class TestWorkflowReadTools(unittest.TestCase):
         result = resp.get("result", {})
         self.assertNotIn("isError", result)
         data = json.loads(result["content"][0]["text"])
-        self.assertEqual(data["total_nodes"], 38)
+        all_resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "all"})
+        all_data = json.loads(all_resp["result"]["content"][0]["text"])
+        self.assertEqual(data["total_nodes"], all_data["total_nodes"])
         self.assertEqual(data["filtered_count"], 0)
         self.assertEqual(data["nodes"], [])
 
@@ -647,10 +652,12 @@ class TestWorkflowReadTools(unittest.TestCase):
         self.assertTrue(hasattr(workflow_mcp, "workflow_stage_contract_claims"))
         self.assertTrue(hasattr(workflow_mcp, "workflow_execute_verification"))
         self.assertTrue(hasattr(workflow_mcp, "workflow_decay_scan"))
+        self.assertTrue(hasattr(workflow_mcp, "workflow_get_constitution"))
         orient_fn = getattr(workflow_mcp, "workflow_orient")
         get_node_fn = getattr(workflow_mcp, "workflow_get_node")
         res = orient_fn("meta", "weak")
-        self.assertEqual(res["total_nodes"], 38)
+        self.assertGreater(res["total_nodes"], 0)
+        self.assertEqual(res["filtered_count"], len(res["nodes"]))
         node_res = get_node_fn("meta", "tree-cli-usage")
         self.assertEqual(node_res["id"], "tree-cli-usage")
 
@@ -1668,6 +1675,242 @@ class TestMCPPipelineE2E(unittest.TestCase):
                 proc.wait()
 
 
+class TestWorkflowAnalyzeTools(unittest.TestCase):
+    """MCP tools for spec-analyze (context, run, complete, skip) and get_node analyze block."""
+
+    def setUp(self):
+        self.server = workflow_mcp.default_server
+
+    def _call_tool(self, name: str, arguments: dict):
+        req = {
+            "jsonrpc": "2.0",
+            "id": 300,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        }
+        return self.server.handle_message(req)
+
+    def test_tools_list_registers_analyze_tools(self):
+        req = {"jsonrpc": "2.0", "id": 301, "method": "tools/list"}
+        resp = self.server.handle_message(req)
+        tools = {t["name"]: t for t in resp.get("result", {}).get("tools", [])}
+        for name in (
+            "workflow_analyze_context",
+            "workflow_analyze_run",
+            "workflow_analyze_complete",
+            "workflow_analyze_skip",
+        ):
+            self.assertIn(name, tools)
+            props = tools[name]["inputSchema"]["properties"]
+            self.assertIn("project", props)
+            self.assertIn("node_id", props)
+
+    def test_get_node_includes_analyze_block(self):
+        resp = self._call_tool(
+            "workflow_get_node", {"project": "meta", "node_id": "tree-cli-usage"}
+        )
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertIn("analyze", data)
+        self.assertIn("findings_json", data["analyze"])
+        self.assertIn("status_json", data["analyze"])
+        self.assertTrue(str(data["analyze"]["findings_json"]).endswith(".findings.json"))
+        self.assertTrue(str(data["analyze"]["status_json"]).endswith(".analyze.json"))
+
+    def test_analyze_run_complete_skip_and_abort(self):
+        import tempfile
+        import yaml
+
+        contract = (
+            "# Scope Contract: N\n\n## GOAL\nShip gate.\n\n## IN\n- cli\n\n## OUT\n- ui\n\n"
+            "## MUST\n- Persist status\n\n## MUST NOT\n- Edit claims\n\n"
+            "## VERIFY\n- [ ] pytest -k abort_missing\n"
+        )
+        claims = {
+            "project": "analyze-proj",
+            "node": "n1",
+            "goal": "Ship gate.",
+            "claims": [
+                {
+                    "id": "c1",
+                    "kind": "verify",
+                    "text": "pytest -k abort_missing",
+                    "decision": "approved",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "analyze-proj",
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "title": "Analyze node",
+                        "kind": "work",
+                        "status": "spec_approved",
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            (proj_dir / "specs").mkdir()
+            (proj_dir / "specs" / "n1.md").write_text(contract, encoding="utf-8")
+            (proj_dir / "claims").mkdir()
+            (proj_dir / "claims" / "n1.json").write_text(
+                json.dumps(claims, indent=2) + "\n", encoding="utf-8"
+            )
+
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                ctx = self._call_tool(
+                    "workflow_analyze_context",
+                    {"project": "analyze-proj", "node_id": "n1"},
+                )
+                ctx_data = json.loads(ctx["result"]["content"][0]["text"])
+                self.assertTrue(ctx_data["claims_exists"])
+                self.assertTrue(ctx_data["contract_exists"])
+
+                run = self._call_tool(
+                    "workflow_analyze_run",
+                    {"project": "analyze-proj", "node_id": "n1"},
+                )
+                self.assertFalse(run.get("result", {}).get("isError"))
+                run_data = json.loads(run["result"]["content"][0]["text"])
+                self.assertEqual(run_data["status"], "in_progress")
+                self.assertTrue(Path(run_data["findings_json"]).is_file())
+
+                done = self._call_tool(
+                    "workflow_analyze_complete",
+                    {"project": "analyze-proj", "node_id": "n1", "status": "complete"},
+                )
+                self.assertFalse(done.get("result", {}).get("isError"))
+                done_data = json.loads(done["result"]["content"][0]["text"])
+                self.assertEqual(done_data["status"], "complete")
+
+                node = self._call_tool(
+                    "workflow_get_node",
+                    {"project": "analyze-proj", "node_id": "n1"},
+                )
+                node_data = json.loads(node["result"]["content"][0]["text"])
+                self.assertEqual(node_data["analyze"]["status"], "complete")
+
+                skipped = self._call_tool(
+                    "workflow_analyze_skip",
+                    {"project": "analyze-proj", "node_id": "n1"},
+                )
+                skip_data = json.loads(skipped["result"]["content"][0]["text"])
+                self.assertEqual(skip_data["status"], "skipped")
+
+            # abort: contract only, no claims
+            proj2 = Path(tmpdir) / "p2"
+            proj2.mkdir()
+            (proj2 / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            (proj2 / "specs").mkdir()
+            (proj2 / "specs" / "n1.md").write_text(contract, encoding="utf-8")
+            with mock.patch("project_tree.model.project_dir", return_value=proj2):
+                abort = self._call_tool(
+                    "workflow_analyze_complete",
+                    {"project": "analyze-proj", "node_id": "n1"},
+                )
+                self.assertTrue(abort.get("result", {}).get("isError"))
+                err = abort["result"]["content"][0]["text"].lower()
+                self.assertIn("assemble", err)
+                self.assertIn("skip", err)
+                self.assertFalse((proj2 / "analyze" / "n1.findings.json").exists())
+
+    def test_execute_verification_not_blocked_after_complete_with_critical(self):
+        import tempfile
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "pass-node",
+                        "title": "Passing Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {
+                            "verification": {
+                                "command": "python3 -c 'print(\"VERIFY_OK\")'",
+                            }
+                        },
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            analyze_dir = proj_dir / "analyze"
+            analyze_dir.mkdir()
+            (analyze_dir / "pass-node.findings.json").write_text(
+                json.dumps(
+                    {
+                        "findings": [
+                            {
+                                "id": "f1",
+                                "category": "constitution",
+                                "severity": "CRITICAL",
+                                "summary": "x",
+                            }
+                        ],
+                        "critical_count": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (analyze_dir / "pass-node.analyze.json").write_text(
+                json.dumps({"status": "complete", "critical_count": 1}),
+                encoding="utf-8",
+            )
+            (proj_dir / "specs").mkdir()
+            (proj_dir / "specs" / "pass-node.md").write_text("# Scope Contract\n", encoding="utf-8")
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "pass-node"},
+                )
+            result = resp.get("result", {})
+            self.assertNotIn("isError", result)
+            data = json.loads(result["content"][0]["text"])
+            self.assertEqual(data["status"], "passed")
+
+    def test_execute_verification_blocks_when_contract_and_analyze_missing(self):
+        import tempfile
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "exec-proj",
+                "nodes": [
+                    {
+                        "id": "pass-node",
+                        "title": "Passing Node",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {
+                            "verification": {
+                                "command": "python3 -c 'print(\"VERIFY_OK\")'",
+                            }
+                        },
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            (proj_dir / "specs").mkdir()
+            (proj_dir / "specs" / "pass-node.md").write_text("# Scope Contract\n", encoding="utf-8")
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_execute_verification",
+                    {"project": "exec-proj", "node_id": "pass-node"},
+                )
+            result = resp.get("result", {})
+            self.assertTrue(result.get("isError"))
+            self.assertIn("missing", result["content"][0]["text"].lower())
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

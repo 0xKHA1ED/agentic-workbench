@@ -33,6 +33,9 @@ def clarify_paths(project: str, node_id: str) -> dict[str, str]:
     }
 
 
+CONSTITUTION_EXCERPT_LIMIT = 4000
+
+
 def constitution_path(project: str) -> Path | None:
     proj = project_tree_model.project_dir(project)
     for candidate in (
@@ -44,6 +47,16 @@ def constitution_path(project: str) -> Path | None:
         if candidate.is_file():
             return candidate
     return None
+
+
+def constitution_excerpt(project: str, limit: int = CONSTITUTION_EXCERPT_LIMIT) -> str | None:
+    path = constitution_path(project)
+    if path is None:
+        return None
+    text = path.read_text(encoding="utf-8")
+    if len(text) > limit:
+        return text[:limit] + "…"
+    return text
 
 
 def infer_taxonomy_mode(node_data: dict[str, Any] | None) -> str:

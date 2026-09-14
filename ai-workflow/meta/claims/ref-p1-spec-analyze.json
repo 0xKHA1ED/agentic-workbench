@@ -1,0 +1,96 @@
+{
+  "project": "meta",
+  "node": "ref-p1-spec-analyze",
+  "node_id": "ref-p1-spec-analyze",
+  "title": "spec-analyze \u2014 read-only contract/claims gate",
+  "goal": "`/implement` waits until spec-analyze is complete or skipped; analyze reports claims-to-contract consistency and never writes spec artifacts.",
+  "in": [
+    "spec-analyze skill, MCP tools, and CLI",
+    "claims JSON, assembled scope-contract, clarifications decisions, constitution.md when present",
+    "analyze complete/skip status gate on /implement"
+  ],
+  "out": [
+    "Cockpit findings UI",
+    "Spec Kit duplication, ambiguity, and underspec prose-lint (ref-sk-analyze-cross)",
+    "requiring plan.md or tasks.md",
+    "editing claims, contract, tree, or constitution from analyze"
+  ],
+  "in_scope": [
+    "spec-analyze skill, MCP tools, and CLI",
+    "claims JSON, assembled scope-contract, clarifications decisions, constitution.md when present",
+    "analyze complete/skip status gate on /implement"
+  ],
+  "out_scope": [
+    "Cockpit findings UI",
+    "Spec Kit duplication, ambiguity, and underspec prose-lint (ref-sk-analyze-cross)",
+    "requiring plan.md or tasks.md",
+    "editing claims, contract, tree, or constitution from analyze"
+  ],
+  "claims": [
+    {
+      "id": "c1",
+      "kind": "verify",
+      "text": "`python3 -m pytest tests/test_spec_analyze.py -q -k abort_missing` exits 0: missing claims JSON or assembled contract refuses complete, writes no findings file, and tells the user to assemble or skip",
+      "decision": "approved",
+      "check_command": "python3 -m pytest tests/test_spec_analyze.py -q -k abort_missing",
+      "source": "scripts/spec_analyze/",
+      "examples": [
+        {
+          "case": "missing claims",
+          "input": "assembled contract exists; claims JSON absent",
+          "expected": "not complete; no findings file; message includes assemble or skip"
+        },
+        {
+          "case": "missing contract",
+          "input": "claims JSON exists; assembled contract absent",
+          "expected": "not complete; no findings file; message includes assemble or skip"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "kind": "verify",
+      "text": "`python3 -m pytest tests/test_spec_analyze.py -q -k implement_gate` exits 0: analyze status complete or skipped is persisted under the project dir; `/implement` Phase 1 stops when status is missing or in_progress",
+      "decision": "approved",
+      "check_command": "python3 -m pytest tests/test_spec_analyze.py -q -k implement_gate",
+      "source": ".cursor/skills/implement/SKILL.md"
+    },
+    {
+      "id": "c3",
+      "kind": "must",
+      "text": "A complete analyze run writes findings JSON under the project directory with category and severity in CRITICAL, HIGH, MEDIUM, LOW covering claims vs GOAL/IN/OUT/MUST/MUST NOT/VERIFY, clarification contradictions, constitution MUST when constitution.md exists, and unmapped claims or VERIFY",
+      "decision": "approved",
+      "source": "scripts/spec_analyze/"
+    },
+    {
+      "id": "c4",
+      "kind": "must",
+      "text": "Analyze reads claims JSON, assembled scope-contract, and clarifications decisions; reads constitution.md when that file exists; completes when plan.md and tasks.md are absent",
+      "decision": "approved",
+      "source": "scripts/spec_analyze/"
+    },
+    {
+      "id": "c5",
+      "kind": "must",
+      "text": "Agents run spec-analyze through a skill file, MCP tools, and a CLI entry point",
+      "decision": "approved",
+      "source": "scripts/workflow_mcp.py"
+    },
+    {
+      "id": "c6",
+      "kind": "must_not",
+      "text": "Modify claims JSON, assembled contract markdown, nodes.yaml, fragment YAML, or constitution.md during an analyze run",
+      "decision": "approved",
+      "source": ".cursor/skills/spec-analyze/SKILL.md"
+    },
+    {
+      "id": "c7",
+      "kind": "must_not",
+      "text": "Block `/implement` after analyze status is complete or skipped solely because findings contain CRITICAL",
+      "decision": "approved",
+      "source": ".cursor/skills/implement/SKILL.md"
+    }
+  ],
+  "goal_approved": true,
+  "updated": "2026-09-14"
+}

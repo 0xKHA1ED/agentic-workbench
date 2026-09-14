@@ -65,7 +65,7 @@ No extra sections. No paragraphs outside the template.
 ### Rules
 
 - **GOAL**: one sentence. No "why" or background.
-- **IN / OUT**: nouns and boundaries, not implementation.
+- **IN / OUT**: nouns and boundaries, not implementation. HOW (approach, file map, sequencing) belongs in `/technical-plan` (`plans/<node-id>.plan.md` + tree `data.plan`), not this contract.
 - **MUST / MUST NOT**: falsifiable. "Handle errors gracefully" is banned — say what happens on error.
 - **VERIFY**: every item must be checkable without reading code. Support executable assertion syntax:
   - `check_type: pytest | <command>` — specific test command executing via pytest
@@ -112,7 +112,7 @@ Do not rewrite the spec unless user says "fix it".
 
 ## Anti-patterns (never output)
 
-- Rationale / background / "approach" sections
+- Rationale / background / "approach" sections (use `/technical-plan`)
 - Implementation steps or file paths (unless user explicitly asks for IN to list modules)
 - "Should be performant / scalable / robust" without a number or test
 - Duplicate info across sections

@@ -27,7 +27,7 @@ nodes:
     - id: ref-p1-spec-analyze
       title: spec-analyze — read-only contract/claims gate
       kind: work
-      status: weak
+      status: strong
       data:
         source: spec-kit
         priority: p1
@@ -38,7 +38,7 @@ nodes:
     - id: ref-p1-constitution
       title: constitution.md + skill (non-negotiable principles)
       kind: work
-      status: weak
+      status: strong
       data:
         source: spec-kit
         priority: p1
@@ -52,19 +52,36 @@ nodes:
     - id: ref-p2-requirements-checklist
       title: requirements-checklist — unit tests for requirements
       kind: work
-      status: weak
+      status: strong
+      data:
+        source: spec-kit
+        priority: p2
+        inspired_by: templates/commands/checklist.md
+        target_meta: spec-discovery
+        pattern: .cursor/skills/requirements-checklist/SKILL.md,scripts/spec_checklist/**,meta/templates/requirements-checklist-template.md
     - id: ref-p2-task-breakdown
       title: task-breakdown — tasks.md + scoped implement
       kind: work
-      status: weak
+      status: strong
     - id: ref-p2-technical-plan
       title: technical-plan — optional plan.md (HOW) separate from contract
       kind: work
-      status: weak
+      status: strong
+      data:
+        source: spec-kit
+        priority: p2
+        inspired_by: templates/commands/plan.md
+        target_meta: spec-contract
+        pattern: .cursor/skills/technical-plan/SKILL.md,scripts/plan_paths.py,scripts/plan_paths/**
     - id: ref-p2-idea-assess
       title: idea-assess — go/kill funnel before tree nodes
       kind: work
-      status: weak
+      status: strong
+      data:
+        source: spec-kit
+        priority: p2
+        inspired_by: extensions/assess
+        pattern: .cursor/skills/idea-assess/SKILL.md,scripts/idea_assess/**
   - id: ref-speckit
     title: Spec Kit — skills & artifacts
     kind: group

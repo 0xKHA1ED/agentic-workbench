@@ -43,7 +43,7 @@ Use returned:
 |-------|-----|
 | `pain`, `pattern` | Investigation context |
 | `taxonomy_mode` | `full` (product) vs `tooling` (scripts/skills/viewer) |
-| `constitution_excerpt` | MUST principles — do not contradict |
+| `constitution_excerpt` | MUST principles — do not contradict. Also available via `workflow_get_constitution`. |
 | `session` | Prior Q→A; do not repeat |
 | `paths` | Where artifacts are written |
 
@@ -158,10 +158,10 @@ Tell the user to run **spec-discovery**. When staging claims:
 - Batch multiple clarify questions in one message (escape hatch: user insists → max 3, warn)
 - Architecture brainstorm in clarify (reparent to `/brainstorm` or Understand)
 - Editing `nodes.yaml` or clarify files by hand (use MCP record/complete)
-- Spec Kit `requirements.md` checklist sync in v1 (deferred to requirements-checklist node)
+- Marking `[x]` on requirements checklists (that is `/requirements-checklist` — reviewer-only)
 
 ---
 
 ## Reference
 
-Inspired by Spec Kit `templates/commands/clarify.md` (B+ profile: no checklist file v1). Cockpit Q&A UI is **`ref-cockpit-clarify-ui`**, not required for this skill.
+Inspired by Spec Kit `templates/commands/clarify.md` (B+ profile). Requirements checklist files are `/requirements-checklist`. Cockpit Q&A UI is **`ref-cockpit-clarify-ui`**, not required for this skill.

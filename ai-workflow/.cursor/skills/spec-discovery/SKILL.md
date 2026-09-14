@@ -27,7 +27,7 @@ If any of the following, run **`/spec-clarify`** first (see `.cursor/skills/spec
 
 Do **not** call `workflow_stage_contract_claims` until `workflow_clarify_complete` (`complete` or `skipped`).
 
-When staging claims, read `<project>/clarifications/<node-id>.decisions.json` and **do not re-ask** recorded decisions.
+When staging claims, read `<project>/clarifications/<node-id>.decisions.json` and **do not re-ask** recorded decisions. Call `workflow_get_constitution` and do not stage claims that contradict MUST principles.
 
 ## Workflow
 
@@ -114,6 +114,10 @@ python scripts/spec_discovery.py assemble projects/<project>/claims/<node-id>.js
 ```
 
 Writes `projects/<project>/specs/<node-id>.md` (scope-contract format).
+
+Then run **`/spec-analyze`** (or skip) before `/implement`. Analyze is read-only: claims JSON + assembled contract + clarifications decisions; `constitution.md` when present. Status and findings persist under `<project>/analyze/`. `/implement` stops if analyze is missing or `in_progress`; CRITICAL findings do not hard-block after complete/skip.
+
+Optional: **`/requirements-checklist`** generates `checklists/<node-id>/requirements.md` (user-only `[x]`). Unchecked custom checklists block `/implement` (`workflow_checklist_status` is read-only).
 
 ### 5 — Link to tree
 
