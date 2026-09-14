@@ -1102,6 +1102,85 @@ class TestWorkflowMutationAndExecutionTools(unittest.TestCase):
                 self.assertEqual(saved["in"], ["health endpoint", "status response"])
                 self.assertEqual(saved["out"], ["metrics prometheus exporter"])
 
+    def test_stage_contract_claims_blocked_by_needs_clarify(self):
+        import tempfile
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "clarify-proj",
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "title": "N",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {"needs_clarify": True},
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "clarify-proj",
+                        "node_id": "n1",
+                        "goal": "Ship clarify gate",
+                        "claims": [
+                            {
+                                "id": "c1",
+                                "kind": "must",
+                                "text": "Block claims until clarify completes",
+                            }
+                        ],
+                    },
+                )
+                self.assertTrue(resp.get("result", {}).get("isError"))
+
+    def test_workflow_clarify_record_and_unblock_claims(self):
+        import tempfile
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_dir = Path(tmpdir)
+            sample_tree = {
+                "project": "clarify-proj",
+                "nodes": [
+                    {
+                        "id": "n1",
+                        "title": "N",
+                        "kind": "work",
+                        "status": "weak",
+                        "data": {"needs_clarify": True, "pattern": "scripts/x"},
+                    }
+                ],
+            }
+            (proj_dir / "nodes.yaml").write_text(yaml.dump(sample_tree))
+            with mock.patch("project_tree.model.project_dir", return_value=proj_dir):
+                resp = self._call_tool(
+                    "workflow_clarify_complete",
+                    {"project": "clarify-proj", "node_id": "n1", "status": "skipped"},
+                )
+                self.assertFalse(resp.get("result", {}).get("isError"))
+                resp2 = self._call_tool(
+                    "workflow_stage_contract_claims",
+                    {
+                        "project": "clarify-proj",
+                        "node_id": "n1",
+                        "goal": "Ship clarify gate",
+                        "claims": [
+                            {
+                                "id": "c1",
+                                "kind": "must",
+                                "text": "Allow claims after clarify skipped",
+                            }
+                        ],
+                    },
+                )
+                self.assertFalse(resp2.get("result", {}).get("isError"))
+
     def test_stage_contract_claims_rejects_vague_claims(self):
         """Test workflow_stage_contract_claims rejects non-falsifiable claims."""
         import tempfile

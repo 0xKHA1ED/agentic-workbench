@@ -17,6 +17,7 @@ examples/             # Reference trees (e.g. fragment-demo)
 | Skill | Invoke | Purpose |
 |-------|--------|---------|
 | `scope-contract` | `/scope-contract` | Skimmable specs (GOAL/IN/OUT/VERIFY) |
+| `spec-clarify` | `/spec-clarify` | Requirements Q&A before claims staging |
 | `project-tree` | `/project-tree` | Mutate trees via CLI only (propose → diff → y/n) |
 | `spec-discovery` | `/spec-discovery` | Claims JSON → terminal triage → assemble spec |
 
@@ -38,6 +39,10 @@ python3 scripts/project_tree.py propose meta batch --file batch.json
 python3 scripts/spec_discovery.py validate meta/claims/<node>.json
 python3 scripts/spec_discovery.py review meta/claims/<node>.json
 python3 scripts/spec_discovery.py assemble meta/claims/<node>.json
+
+# Spec clarify (before claims when needs_clarify)
+python3 scripts/spec_clarify.py paths meta <node_id> --json
+python3 scripts/spec_clarify.py complete meta <node_id> --status complete --deferred observability
 
 # Tree web UI
 python3 scripts/tree_server.py

@@ -1,0 +1,53 @@
+{
+  "summary": "Backlog tree: reference-inspired improvements (Spec Kit + Superpowers gap analysis)",
+  "ops": [
+    {"op": "rename", "args": ["ref-imp-overview", "Reference-inspired improvements (Spec Kit + Superpowers)"]},
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-p1-start", "P1 — Start here"]},
+    {"op": "add-child", "args": ["ref-p1-start", "ref-p1-spec-clarify", "spec-clarify skill + Cockpit Q&A loop", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-p1-start", "ref-p1-spec-analyze", "spec-analyze — read-only contract/claims gate", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-p1-start", "ref-p1-constitution", "constitution.md + skill (non-negotiable principles)", "work", "weak"]},
+
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-p2-spec", "P2 — Spec depth"]},
+    {"op": "add-child", "args": ["ref-p2-spec", "ref-p2-requirements-checklist", "requirements-checklist — unit tests for requirements", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-p2-spec", "ref-p2-task-breakdown", "task-breakdown — tasks.md + scoped implement", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-p2-spec", "ref-p2-technical-plan", "technical-plan — optional plan.md (HOW) separate from contract", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-p2-spec", "ref-p2-idea-assess", "idea-assess — go/kill funnel before tree nodes", "work", "weak"]},
+
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-speckit", "Spec Kit — skills & artifacts"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-clarify-taxonomy", "Clarify taxonomy + one-question loop + MC recommendations", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-specify-separation", "WHAT/WHY spec vs HOW plan separation in our artifacts", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-checklist-gate", "Requirements checklist — user-only checkbox gate before implement", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-analyze-cross", "Analyze — claims ↔ contract ↔ VERIFY ↔ IN/OUT consistency", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-tasks-phases", "Tasks — phased dependency-ordered tasks.md", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-converge", "Converge — post-implement gap hunt → new claims/tasks", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit", "ref-sk-assess-pipeline", "Assess extension — intake→decide before spec-discovery", "work", "weak"]},
+
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-speckit-platform", "Spec Kit — platform & automation"]},
+    {"op": "add-child", "args": ["ref-speckit-platform", "ref-sk-workflow-engine", "Workflow YAML — daily loop run/resume/gates", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit-platform", "ref-sk-workflow-overlays", "Workflow overlays — insert lint/verify after implement", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit-platform", "ref-sk-phase-hooks", "Phase hooks — before/after clarify, specify, implement", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-speckit-platform", "ref-sk-feature-dirs", "Feature directory convention — specs/<id>/ + feature.json pointer", "work", "weak"]},
+
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-superpowers", "Superpowers — process skills"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-using-ai-workflow", "using-ai-workflow meta-skill — route daily loop", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-brainstorm", "Brainstorm — spike/bounded/architectural + approval gate", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-tdd", "TDD mode on implement — red/green before VERIFY walk", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-writing-plans", "writing-plans — implementation plan artifact", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-executing-plans", "executing-plans — checkbox plan execution", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-subagent-dev", "subagent-driven-development — per-task implementer + review", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-verify-completion", "verification-before-completion — iron law on done claims", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-systematic-debugging", "systematic-debugging — pair with /understand for bugs", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-git-worktrees", "using-git-worktrees — isolated implement per node", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-code-review", "request/receive-code-review skills after implement", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-superpowers", "ref-sp-finish-branch", "finishing-a-development-branch — merge/PR ritual", "work", "weak"]},
+
+    {"op": "add-group", "args": ["ref-imp-overview", "ref-cockpit", "Cockpit / viewer UX"]},
+    {"op": "add-child", "args": ["ref-cockpit", "ref-cockpit-clarify-ui", "Clarify + checklist triage in tree viewer (J/K/Y/N)", "work", "weak"]},
+    {"op": "add-child", "args": ["ref-cockpit", "ref-cockpit-workflow-status", "Workflow run status + resume from paused gate", "work", "weak"]},
+
+    {"op": "set-data", "args": ["ref-p1-spec-clarify", {"source": "spec-kit", "priority": "p1", "inspired_by": "templates/commands/clarify.md", "target_meta": "spec-discovery"}]},
+    {"op": "set-data", "args": ["ref-p1-spec-analyze", {"source": "spec-kit", "priority": "p1", "inspired_by": "templates/commands/analyze.md", "target_meta": "spec-discovery"}]},
+    {"op": "set-data", "args": ["ref-p1-constitution", {"source": "spec-kit", "priority": "p1", "inspired_by": "docs/reference/agentic-sdd.md", "target_meta": "spec-contract"}]},
+    {"op": "set-data", "args": ["ref-imp-overview", {"pattern": "references/spec-kit-main/**,references/superpowers-main/**", "notes": "Gap analysis backlog — pick one leaf at a time"}]}
+  ]
+}

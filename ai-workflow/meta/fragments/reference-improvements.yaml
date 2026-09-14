@@ -1,0 +1,187 @@
+# Project tree fragment — managed by scripts/project_tree.py
+nodes:
+- id: ref-imp-overview
+  title: Reference-inspired improvements (Spec Kit + Superpowers)
+  kind: group
+  status: weak
+  data:
+    pain: Borrow Spec Kit + Superpowers gates without losing tree + claims + MCP spine
+    pattern: references/spec-kit-main/**,references/superpowers-main/**
+    notes: Gap analysis backlog — pick one leaf at a time
+  children:
+  - id: ref-p1-start
+    title: P1 — Start here
+    kind: group
+    status: weak
+    children:
+    - id: ref-p1-spec-clarify
+      title: spec-clarify skill + Cockpit Q&A loop
+      kind: work
+      status: strong
+      data:
+        source: spec-kit
+        priority: p1
+        inspired_by: templates/commands/clarify.md
+        target_meta: spec-discovery
+        pattern: .cursor/skills/spec-clarify/SKILL.md,scripts/spec_clarify/**
+    - id: ref-p1-spec-analyze
+      title: spec-analyze — read-only contract/claims gate
+      kind: work
+      status: weak
+      data:
+        source: spec-kit
+        priority: p1
+        inspired_by: templates/commands/analyze.md
+        target_meta: spec-discovery
+        needs_clarify: false
+        clarify: complete
+    - id: ref-p1-constitution
+      title: constitution.md + skill (non-negotiable principles)
+      kind: work
+      status: weak
+      data:
+        source: spec-kit
+        priority: p1
+        inspired_by: docs/reference/agentic-sdd.md
+        target_meta: spec-contract
+  - id: ref-p2-spec
+    title: P2 — Spec depth
+    kind: group
+    status: weak
+    children:
+    - id: ref-p2-requirements-checklist
+      title: requirements-checklist — unit tests for requirements
+      kind: work
+      status: weak
+    - id: ref-p2-task-breakdown
+      title: task-breakdown — tasks.md + scoped implement
+      kind: work
+      status: weak
+    - id: ref-p2-technical-plan
+      title: technical-plan — optional plan.md (HOW) separate from contract
+      kind: work
+      status: weak
+    - id: ref-p2-idea-assess
+      title: idea-assess — go/kill funnel before tree nodes
+      kind: work
+      status: weak
+  - id: ref-speckit
+    title: Spec Kit — skills & artifacts
+    kind: group
+    status: weak
+    children:
+    - id: ref-sk-clarify-taxonomy
+      title: Clarify taxonomy + one-question loop + MC recommendations
+      kind: work
+      status: weak
+    - id: ref-sk-specify-separation
+      title: WHAT/WHY spec vs HOW plan separation in our artifacts
+      kind: work
+      status: weak
+    - id: ref-sk-checklist-gate
+      title: Requirements checklist — user-only checkbox gate before implement
+      kind: work
+      status: weak
+    - id: ref-sk-analyze-cross
+      title: Analyze — claims ↔ contract ↔ VERIFY ↔ IN/OUT consistency
+      kind: work
+      status: weak
+    - id: ref-sk-tasks-phases
+      title: Tasks — phased dependency-ordered tasks.md
+      kind: work
+      status: weak
+    - id: ref-sk-converge
+      title: Converge — post-implement gap hunt → new claims/tasks
+      kind: work
+      status: weak
+    - id: ref-sk-assess-pipeline
+      title: Assess extension — intake→decide before spec-discovery
+      kind: work
+      status: weak
+  - id: ref-speckit-platform
+    title: Spec Kit — platform & automation
+    kind: group
+    status: weak
+    children:
+    - id: ref-sk-workflow-engine
+      title: Workflow YAML — daily loop run/resume/gates
+      kind: work
+      status: weak
+    - id: ref-sk-workflow-overlays
+      title: Workflow overlays — insert lint/verify after implement
+      kind: work
+      status: weak
+    - id: ref-sk-phase-hooks
+      title: Phase hooks — before/after clarify, specify, implement
+      kind: work
+      status: weak
+    - id: ref-sk-feature-dirs
+      title: Feature directory convention — specs/<id>/ + feature.json pointer
+      kind: work
+      status: weak
+  - id: ref-superpowers
+    title: Superpowers — process skills
+    kind: group
+    status: weak
+    children:
+    - id: ref-sp-using-ai-workflow
+      title: using-ai-workflow meta-skill — route daily loop
+      kind: work
+      status: weak
+    - id: ref-sp-brainstorm
+      title: Brainstorm — spike/bounded/architectural + approval gate
+      kind: work
+      status: weak
+    - id: ref-sp-tdd
+      title: TDD mode on implement — red/green before VERIFY walk
+      kind: work
+      status: weak
+    - id: ref-sp-writing-plans
+      title: writing-plans — implementation plan artifact
+      kind: work
+      status: weak
+    - id: ref-sp-executing-plans
+      title: executing-plans — checkbox plan execution
+      kind: work
+      status: weak
+    - id: ref-sp-subagent-dev
+      title: subagent-driven-development — per-task implementer + review
+      kind: work
+      status: weak
+    - id: ref-sp-verify-completion
+      title: verification-before-completion — iron law on done claims
+      kind: work
+      status: weak
+    - id: ref-sp-systematic-debugging
+      title: systematic-debugging — pair with /understand for bugs
+      kind: work
+      status: weak
+    - id: ref-sp-git-worktrees
+      title: using-git-worktrees — isolated implement per node
+      kind: work
+      status: weak
+    - id: ref-sp-code-review
+      title: request/receive-code-review skills after implement
+      kind: work
+      status: weak
+    - id: ref-sp-finish-branch
+      title: finishing-a-development-branch — merge/PR ritual
+      kind: work
+      status: weak
+  - id: ref-cockpit
+    title: Cockpit / viewer UX
+    kind: group
+    status: weak
+    children:
+    - id: ref-cockpit-clarify-ui
+      title: Clarify + checklist triage in tree viewer (J/K/Y/N)
+      kind: work
+      status: weak
+    - id: ref-cockpit-workflow-status
+      title: Workflow run status + resume from paused gate
+      kind: work
+      status: weak
+constraints:
+  codebase:
+  - .
+  - references/

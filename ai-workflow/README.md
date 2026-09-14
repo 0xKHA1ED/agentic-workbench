@@ -36,6 +36,7 @@ python3 scripts/tree_server.py   # → http://127.0.0.1:8765/?project=meta
 |-------|--------|---------|
 | `project-tree` | `/project-tree` | Tree mutations via CLI (propose → diff → y/n) |
 | `scope-contract` | `/scope-contract` | Falsifiable specs (GOAL/IN/OUT/VERIFY) |
+| `spec-clarify` | `/spec-clarify` | Requirements clarification before claims |
 | `spec-discovery` | `/spec-discovery` | Claims JSON → triage → assemble spec |
 
 ## Project discovery

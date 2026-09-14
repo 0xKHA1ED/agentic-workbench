@@ -6,6 +6,7 @@ The compounding pipeline we're building tooling for.
 Open Cursor
     → Orient     (what to work on? — tree + viewer + weak nodes)
     → Understand (why is this weak? — investigate, pain on node)
+    → Clarify    (optional — requirements Q&A before claims; /spec-clarify)
     → Spec       (what proves done? — discovery + contract)
     → Implement  (agent executes VERIFY)
     → Strong     (user promotes when trusted)
@@ -24,6 +25,7 @@ Open Cursor
 | Step | Gate |
 |------|------|
 | Tree change | `propose` → terminal y/n |
+| Clarify complete | `workflow_clarify_complete` or skip; blocks claims if `needs_clarify` |
 | Claim triage | `spec_discovery review` → y/n/s per claim |
 | Spec approve | scope-contract REVIEW or assembled spec |
 | Promote trust | `set-status <id> strong` — user only |

@@ -34,6 +34,16 @@ from spec_discovery.model import (
     is_vague,
     save_document,
 )
+from spec_clarify.model import (
+    append_decision,
+    clarify_blocks_claims,
+    clarify_paths,
+    complete_clarify,
+    constitution_path,
+    ensure_decisions,
+    infer_taxonomy_mode,
+    load_decisions,
+)
 
 
 PROTOCOL_VERSION = "2024-11-05"
@@ -411,7 +421,120 @@ def workflow_get_node(project: str, node_id: str) -> Dict[str, Any]:
     if "stale" in node:
         payload["stale"] = node["stale"]
 
+    paths = clarify_paths(project, node_id)
+    decisions_path = Path(paths["decisions_json"])
+    payload["clarify"] = {
+        **paths,
+        "constitution_path": str(constitution_path(project)) if constitution_path(project) else None,
+        "taxonomy_mode": infer_taxonomy_mode(node_data),
+        "needs_clarify": node_data.get("needs_clarify"),
+    }
+    if decisions_path.exists():
+        try:
+            doc = load_decisions(decisions_path)
+            payload["clarify"]["status"] = doc.get("status")
+            payload["clarify"]["questions_asked"] = doc.get("questions_asked")
+            payload["clarify"]["decisions"] = copy.deepcopy(doc.get("decisions") or [])
+        except ValueError:
+            payload["clarify"]["status"] = "invalid"
+    else:
+        payload["clarify"]["status"] = None
+        payload["clarify"]["questions_asked"] = 0
+
     return payload
+
+
+def workflow_clarify_context(project: str, node_id: str) -> Dict[str, Any]:
+    """Resolve clarify artifact paths, taxonomy mode, constitution, and session state for a node."""
+    node_payload = workflow_get_node(project, node_id)
+    clarify = node_payload.get("clarify") or {}
+    const = constitution_path(project)
+    constitution_excerpt = None
+    if const:
+        text = const.read_text(encoding="utf-8")
+        constitution_excerpt = text[:4000] + ("…" if len(text) > 4000 else "")
+    return {
+        "project": project,
+        "node_id": node_id,
+        "node_title": node_payload.get("title"),
+        "pain": (node_payload.get("data") or {}).get("pain"),
+        "pattern": (node_payload.get("data") or {}).get("pattern"),
+        "needs_clarify": (node_payload.get("data") or {}).get("needs_clarify"),
+        "taxonomy_mode": clarify.get("taxonomy_mode"),
+        "paths": {
+            "clarifications_md": clarify.get("clarifications_md"),
+            "decisions_json": clarify.get("decisions_json"),
+        },
+        "constitution_path": clarify.get("constitution_path"),
+        "constitution_excerpt": constitution_excerpt,
+        "session": {
+            "status": clarify.get("status"),
+            "questions_asked": clarify.get("questions_asked", 0),
+            "decisions": clarify.get("decisions") or [],
+        },
+    }
+
+
+def workflow_clarify_record(
+    project: str,
+    node_id: str,
+    question: str,
+    answer: str,
+    category: str = "general",
+) -> Dict[str, Any]:
+    """Append one clarification Q→A to decisions JSON and clarifications markdown."""
+    composed = compose_tree(load_tree(project), project)
+    node = find_node_in_tree(composed, node_id)
+    if node is None:
+        raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+    mode = infer_taxonomy_mode(node.get("data") or {})
+    doc = append_decision(
+        project,
+        node_id,
+        question=question,
+        answer=answer,
+        category=category,
+        taxonomy_mode=mode,
+    )
+    paths = clarify_paths(project, node_id)
+    return {
+        "status": "recorded",
+        "project": project,
+        "node_id": node_id,
+        "questions_asked": doc["questions_asked"],
+        "clarifications_md": paths["clarifications_md"],
+        "decisions_json": paths["decisions_json"],
+    }
+
+
+def workflow_clarify_complete(
+    project: str,
+    node_id: str,
+    deferred_categories: Optional[List[str]] = None,
+    outstanding_categories: Optional[List[str]] = None,
+    status: str = "complete",
+) -> Dict[str, Any]:
+    """Mark clarify session complete or skipped; write completion block (B+ deferred/outstanding)."""
+    if status not in ("complete", "skipped"):
+        raise ValueError("status must be 'complete' or 'skipped'")
+    doc = complete_clarify(
+        project,
+        node_id,
+        deferred_categories=deferred_categories or [],
+        outstanding_categories=outstanding_categories or [],
+        status=status,
+    )
+    paths = clarify_paths(project, node_id)
+    return {
+        "status": doc["status"],
+        "project": project,
+        "node_id": node_id,
+        "deferred_categories": doc.get("deferred_categories"),
+        "outstanding_categories": doc.get("outstanding_categories"),
+        "clarifications_md": paths["clarifications_md"],
+        "decisions_json": paths["decisions_json"],
+        "next": "workflow_stage_contract_claims (read decisions; do not re-ask settled questions)",
+    }
 
 
 def _diff(before: str, after: str, path: str) -> str:
@@ -602,6 +725,16 @@ def workflow_stage_contract_claims(
     if not isinstance(claims, list) or len(claims) == 0:
         raise ValueError("Parameter 'claims' must be a non-empty list of claim objects")
 
+    try:
+        composed = compose_tree(load_tree(project), project)
+        target = find_node_in_tree(composed, node_id)
+        node_data = (target.get("data") or {}) if target else {}
+    except Exception:
+        node_data = {}
+    block_msg = clarify_blocks_claims(project, node_id, node_data)
+    if block_msg:
+        raise ValueError(block_msg)
+
     formatted_claims = []
     for i, raw_claim in enumerate(claims):
         if not isinstance(raw_claim, dict):
@@ -762,6 +895,64 @@ def register_builtin_tools(server: MCPServer) -> None:
             "required": ["project", "node_id"],
         },
         handler=workflow_get_node,
+    )
+
+    server.register_tool(
+        name="workflow_clarify_context",
+        description="Load clarify session paths, taxonomy mode (full vs tooling), constitution excerpt, and prior decisions for a node.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_clarify_context,
+    )
+
+    server.register_tool(
+        name="workflow_clarify_record",
+        description="Record one clarification Q→A (max 5 per session). Updates clarifications/*.md and *.decisions.json.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+                "question": {"type": "string"},
+                "answer": {"type": "string"},
+                "category": {"type": "string", "default": "general"},
+            },
+            "required": ["project", "node_id", "question", "answer"],
+        },
+        handler=workflow_clarify_record,
+    )
+
+    server.register_tool(
+        name="workflow_clarify_complete",
+        description="Finish clarify session (complete or skipped). Optional deferred/outstanding category lists (B+ completion block).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+                "deferred_categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "outstanding_categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "status": {
+                    "type": "string",
+                    "enum": ["complete", "skipped"],
+                    "default": "complete",
+                },
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_clarify_complete,
     )
 
     server.register_tool(

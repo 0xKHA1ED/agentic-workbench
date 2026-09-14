@@ -105,6 +105,18 @@ Persist the crystallized pain directly into the project tree using native MCP to
 3. **Diff Review Ready**:
    The MCP tool automatically stages changes into `<target>.proposed` without editing tree files directly.
 
+4. **Flag clarify when requirements are still fuzzy** (optional, recommended):
+   If GOAL/OUT are not yet decidable, propose `needs_clarify: true`:
+   ```json
+   {
+     "operation": "set_data",
+     "payload": {
+       "needs_clarify": true
+     }
+   }
+   ```
+   User runs `/spec-clarify` before spec-discovery. Clear flag after clarify completes.
+
 ---
 
 ### Phase 5: Human Gate (Hypothesis Verification)
@@ -119,7 +131,7 @@ PROPOSED SCOPE: <Target tree node(s) and pattern>
 Confirm root cause hypothesis and scope? Reply: Y/N (or fix: <details>)
 ```
 
-- If **Y**: Proceed to `/scope-contract` or `/spec-discovery` to stage falsifiable claims.
+- If **Y**: Proceed to **`/spec-clarify`** (if `needs_clarify` or fuzzy requirements) or **`/spec-discovery`** / **`/scope-contract`** to stage falsifiable claims.
 - If **N / fix**: Incorporate user corrections, adjust exploration, and re-verify.
 
 ---

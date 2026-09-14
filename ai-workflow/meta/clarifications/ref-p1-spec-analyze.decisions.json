@@ -1,0 +1,53 @@
+{
+  "project": "meta",
+  "node_id": "ref-p1-spec-analyze",
+  "status": "complete",
+  "taxonomy_mode": "full",
+  "decisions": [
+    {
+      "id": "d1",
+      "category": "scope-out",
+      "question": "When `/implement` is about to start on a node, what must spec-analyze have done?",
+      "answer": "Analyze must be complete or skipped before /implement. Persist run status (and findings). Never edit claims, contract, tree, or constitution. CRITICAL does not hard-block after skip/complete.",
+      "recorded_at": "2026-09-14T12:05:40+00:00"
+    },
+    {
+      "id": "d2",
+      "category": "scope-out",
+      "question": "Which artifacts must v1 spec-analyze read when it runs on a node?",
+      "answer": "Claims JSON + assembled scope-contract + clarifications decisions; plus constitution.md when present. Missing constitution is a finding, not an abort. Do not require plan.md or tasks.md.",
+      "recorded_at": "2026-09-14T12:10:28+00:00"
+    },
+    {
+      "id": "d3",
+      "category": "edge-cases",
+      "question": "If claims JSON or the assembled scope-contract is missing, what must spec-analyze do?",
+      "answer": "Abort: do not mark complete; no findings file. Instruct the user to assemble (or skip).",
+      "recorded_at": "2026-09-14T12:11:03+00:00"
+    },
+    {
+      "id": "d4",
+      "category": "verify-strategy",
+      "question": "Which findings must v1 spec-analyze emit (vs defer to ref-sk-analyze-cross)?",
+      "answer": "Consistency + coverage: claims vs GOAL/IN/OUT/MUST/MUST NOT/VERIFY; clarifications not contradicted; constitution MUST when present; unmapped claims or VERIFY; severities CRITICAL/HIGH/MEDIUM/LOW. Defer Spec Kit duplication/ambiguity/underspec prose-lint to ref-sk-analyze-cross.",
+      "recorded_at": "2026-09-14T12:11:54+00:00"
+    },
+    {
+      "id": "d5",
+      "category": "cockpit-cli",
+      "question": "How must agents run v1 spec-analyze, and where must status/findings persist?",
+      "answer": "Skill + MCP tools + CLI (spec-clarify parity). Persist run status and findings JSON under the project dir. Cockpit UI deferred.",
+      "recorded_at": "2026-09-14T12:13:17+00:00"
+    }
+  ],
+  "deferred_categories": [
+    "cockpit-ux",
+    "speckit-prose-lint",
+    "plan-tasks-artifacts"
+  ],
+  "outstanding_categories": [
+    "findings-path-and-mcp-ids"
+  ],
+  "questions_asked": 5,
+  "updated": "2026-09-14"
+}

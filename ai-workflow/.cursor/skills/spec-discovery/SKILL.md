@@ -17,6 +17,18 @@ After:
 2. User explained **why it hurts** (capture in node `data.pain` via `workflow_propose_tree_mutation`)
 3. Optional: decomposed into child nodes via project-tree batch
 
+### 0 — Clarify gate (before claims)
+
+If any of the following, run **`/spec-clarify`** first (see `.cursor/skills/spec-clarify/SKILL.md`):
+
+- Node `data.needs_clarify` is true
+- `workflow_get_node` → `clarify.status` is `in_progress`
+- Requirements are ambiguous (would need >2 scope-contract questions)
+
+Do **not** call `workflow_stage_contract_claims` until `workflow_clarify_complete` (`complete` or `skipped`).
+
+When staging claims, read `<project>/clarifications/<node-id>.decisions.json` and **do not re-ask** recorded decisions.
+
 ## Workflow
 
 ### 1 — Investigate + discuss (chat)

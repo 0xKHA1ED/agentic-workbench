@@ -58,4 +58,10 @@ nodes:
     status: weak
     data:
       subtree: fragments/platform.yaml
-updated: '2026-09-13'
+  - id: reference-improvements
+    title: Reference-inspired improvements
+    kind: group
+    status: weak
+    data:
+      subtree: fragments/reference-improvements.yaml
+updated: '2026-09-14'
