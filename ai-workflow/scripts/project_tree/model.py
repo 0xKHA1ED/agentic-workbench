@@ -30,8 +30,15 @@ def resolve_project_name(name: str) -> str:
     return PROJECT_ALIASES.get(name, name)
 
 
+def _validate_project_name(name: str) -> None:
+    """Reject project names that could escape the projects directory."""
+    if not name or name in (".", "..") or "/" in name or "\\" in name or "\x00" in name:
+        raise ValueError(f"invalid project name: {name!r}")
+
+
 def project_dir(name: str) -> Path:
     name = resolve_project_name(name)
+    _validate_project_name(name)
     if name == "meta":
         return PACKAGE_ROOT / "meta"
     example = PACKAGE_ROOT / "examples" / name
@@ -168,7 +175,12 @@ def load_tree(name: str) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"No tree at {path}")
     with path.open() as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f)
+    if data is None:
+        return {"project": resolve_project_name(name), "nodes": []}
+    if not isinstance(data, dict):
+        raise ValueError(f"Tree file must be a mapping: {path}")
+    return data
 
 
 def dump_tree(tree: dict[str, Any]) -> str:

@@ -420,6 +420,9 @@ def cmd_propose(args: argparse.Namespace) -> int:
         return cmd_propose_batch(args)
 
     if op == "set-constraint":
+        if not args.rest:
+            print("Usage: propose <project> set-constraint <key> [value ...]", file=sys.stderr)
+            return 1
         key, *values = args.rest
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-constraint", [key, *values]), no_prompt=args.no_prompt)
 
@@ -438,6 +441,9 @@ def cmd_propose(args: argparse.Namespace) -> int:
         )
 
     if op == "set-data":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> set-data <node_id> <json>", file=sys.stderr)
+            return 1
         node_id = args.rest[0]
         try:
             data = json.loads(args.rest[1])
@@ -457,15 +463,24 @@ def cmd_propose(args: argparse.Namespace) -> int:
         )
 
     if op == "set-status":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> set-status <node_id> <status>", file=sys.stderr)
+            return 1
         node_id, status = args.rest[0], args.rest[1]
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-status", [node_id, status]), no_prompt=args.no_prompt)
 
     if op == "mark-stale":
+        if not args.rest:
+            print("Usage: propose <project> mark-stale <node_id> [notes]", file=sys.stderr)
+            return 1
         node_id = args.rest[0]
         notes = args.rest[1] if len(args.rest) > 1 else None
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "mark-stale", [node_id, notes]), no_prompt=args.no_prompt)
 
     if op == "clear-stale":
+        if not args.rest:
+            print("Usage: propose <project> clear-stale <node_id>", file=sys.stderr)
+            return 1
         node_id = args.rest[0]
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "clear-stale", [node_id]), no_prompt=args.no_prompt)
 
@@ -505,6 +520,9 @@ def cmd_propose(args: argparse.Namespace) -> int:
         )
 
     if op == "add-group":
+        if len(args.rest) < 3:
+            print("Usage: propose <project> add-group <parent_id> <id> <title>", file=sys.stderr)
+            return 1
         parent_id, node_id, title = args.rest[0], args.rest[1], args.rest[2]
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "add-group", [parent_id, node_id, title]), no_prompt=args.no_prompt)
 
@@ -645,25 +663,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "decay-scan":
         return cmd_decay_scan(args)
-    if args.command == "validate-patterns":
-        return cmd_validate_patterns(args)
-    if args.command == "compose":
-        return cmd_compose(args)
-    if args.command == "list-fragments":
-        return cmd_list_fragments(args)
-    if args.command == "show":
-        return cmd_show(args)
-    if args.command == "apply":
-        return cmd_apply(args)
-    if args.command == "reject":
-        return cmd_reject(args)
-    if args.command == "pending":
-        return cmd_pending(args)
-    if args.command == "propose":
-        if not args.operation:
-            print("Error: propose requires an operation.", file=sys.stderr)
-            return 1
-        return cmd_propose(args)
+
+    try:
+        if args.command == "validate-patterns":
+            return cmd_validate_patterns(args)
+        if args.command == "compose":
+            return cmd_compose(args)
+        if args.command == "list-fragments":
+            return cmd_list_fragments(args)
+        if args.command == "show":
+            return cmd_show(args)
+        if args.command == "apply":
+            return cmd_apply(args)
+        if args.command == "reject":
+            return cmd_reject(args)
+        if args.command == "pending":
+            return cmd_pending(args)
+        if args.command == "propose":
+            if not args.operation:
+                print("Error: propose requires an operation.", file=sys.stderr)
+                return 1
+            return cmd_propose(args)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     return 1
 

@@ -19,7 +19,9 @@ def resolve_fragment_path(project: str, rel_path: str) -> Path:
         raise ValueError(f"subtree must be relative to project dir: {rel_path}")
     base = model.project_dir(project).resolve()
     full = (base / rel).resolve()
-    if not str(full).startswith(str(base)):
+    # Containment check by path components, not string prefix: a str.startswith
+    # test would also accept sibling dirs sharing the base name (e.g. meta-evil).
+    if full != base and base not in full.parents:
         raise ValueError(f"subtree escapes project dir: {rel_path}")
     return full
 
@@ -72,12 +74,12 @@ def list_fragment_refs(tree: dict[str, Any]) -> list[str]:
     return refs
 
 
-def compose_nodes(nodes: list[dict], project: str, seen: set[str] | None = None) -> list[dict]:
-    seen = seen or set()
+def compose_nodes(nodes: list[dict], project: str, seen: frozenset[str] | set[str] | None = None) -> list[dict]:
+    seen = frozenset(seen) if seen else frozenset()
     return [compose_node(node, project, seen) for node in nodes]
 
 
-def compose_node(node: dict[str, Any], project: str, seen: set[str]) -> dict[str, Any]:
+def compose_node(node: dict[str, Any], project: str, seen: frozenset[str]) -> dict[str, Any]:
     out = copy.deepcopy(node)
     data = dict(out.get("data") or {})
     subtree = data.get("subtree")
@@ -85,16 +87,18 @@ def compose_node(node: dict[str, Any], project: str, seen: set[str]) -> dict[str
     if subtree:
         frag_path = resolve_fragment_path(project, str(subtree))
         key = str(frag_path)
+        # `seen` is the set of fragment keys on the path from the root to this
+        # node. Only an ancestor repeat is a true cycle; reusing the same
+        # fragment across independent branches (a diamond) is allowed.
         if key in seen:
             raise ValueError(f"circular subtree reference: {subtree}")
-        seen.add(key)
         fragment = load_fragment_file(frag_path)
         frag_constraints = fragment.get("constraints") or {}
         if frag_constraints.get("codebase"):
             data["codebase"] = frag_constraints["codebase"]
         data["_composed_from"] = str(subtree)
         out["data"] = data
-        out["children"] = compose_nodes(fragment.get("nodes") or [], project, seen)
+        out["children"] = compose_nodes(fragment.get("nodes") or [], project, seen | {key})
     else:
         out["children"] = compose_nodes(out.get("children") or [], project, seen)
 

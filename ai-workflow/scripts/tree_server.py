@@ -95,6 +95,8 @@ class TreeHandler(SimpleHTTPRequestHandler):
                 self._json_response(self._load_tree(project))
             except FileNotFoundError:
                 self._error_response(404, f"Project not found: {project}")
+            except ValueError as exc:
+                self._error_response(400, str(exc))
             return
         if clean_path == "/api/proposals" or clean_path == "/api/proposals/":
             self._error_response(400, "Missing project: /api/proposals/<project>")
@@ -167,6 +169,8 @@ class TreeHandler(SimpleHTTPRequestHandler):
             raise FileNotFoundError(name)
         with path.open() as f:
             data = yaml.safe_load(f)
+        if not isinstance(data, dict):
+            data = {"project": name, "nodes": []}
         pending_list = list_pending_proposals(name)
         data["pending"] = len(pending_list) > 0
         data["pending_targets"] = [p[0] or "nodes.yaml" for p in pending_list]
@@ -231,6 +235,9 @@ class TreeHandler(SimpleHTTPRequestHandler):
             return
         project = unquote(parts[0])
         node_id = unquote(parts[1])
+        if ".." in project or "/" in project or "\\" in project:
+            self._error_response(400, "Invalid project")
+            return
         if ".." in node_id or "/" in node_id or "\\" in node_id:
             self._error_response(400, "Invalid node_id")
             return
@@ -285,6 +292,9 @@ class TreeHandler(SimpleHTTPRequestHandler):
             return
         if decision not in ("approved", "rejected", "skipped", "pending"):
             self._error_response(400, f"Invalid decision: '{decision}'. Must be one of: approved, rejected, skipped, pending")
+            return
+        if ".." in str(project) or "/" in str(project) or "\\" in str(project):
+            self._error_response(400, "Invalid project")
             return
         if ".." in node_id or "/" in node_id or "\\" in node_id:
             self._error_response(400, "Invalid node_id")

@@ -120,6 +120,19 @@ def build_markdown(data: dict[str, Any]) -> str:
     return "\n".join(parts) + "\n"
 
 
+def _display_spec_path(out: Path) -> str:
+    """Repo-relative path for the spec, robust to shallow/custom output paths."""
+    from project_tree.model import PACKAGE_ROOT, host_root
+
+    resolved = out.resolve()
+    for anchor in (PACKAGE_ROOT, host_root()):
+        try:
+            return str(resolved.relative_to(Path(anchor).resolve()))
+        except ValueError:
+            continue
+    return str(out)
+
+
 def run_assemble(claims_path: Path, output: Path | None = None) -> int:
     from .model import load_document, normalize_document
 
@@ -128,10 +141,7 @@ def run_assemble(claims_path: Path, output: Path | None = None) -> int:
     out = output or spec_output_path(data, claims_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown)
-    try:
-        data["spec_path"] = str(out.relative_to(out.parents[2]))
-    except ValueError:
-        data["spec_path"] = str(out)
+    data["spec_path"] = _display_spec_path(out)
     save_document(claims_path, data)
     print(f"Wrote {out}")
     return 0
