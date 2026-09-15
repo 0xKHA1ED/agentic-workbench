@@ -241,6 +241,33 @@ def walk_nodes(nodes: list[dict]):
         yield from walk_nodes(node.get("children") or [])
 
 
+def filter_tree_by_status(tree: dict, status: str) -> dict:
+    """Return a tree copy pruned to paths that lead to nodes with the given status."""
+    want = str(status).strip().lower()
+    if not want:
+        raise ValueError("status filter must be non-empty")
+
+    def prune(node: dict) -> dict | None:
+        kept_children: list[dict] = []
+        for child in node.get("children") or []:
+            pruned = prune(child)
+            if pruned is not None:
+                kept_children.append(pruned)
+        if (node.get("status") or "").lower() == want or kept_children:
+            out = copy.deepcopy(node)
+            out["children"] = kept_children
+            return out
+        return None
+
+    out = copy.deepcopy(tree)
+    out["nodes"] = [
+        pruned
+        for root in tree.get("nodes") or []
+        if (pruned := prune(root)) is not None
+    ]
+    return out
+
+
 def ascii_tree(tree: dict, composed: bool = False) -> str:
     mode = "composed" if composed or tree.get("composed") else "raw"
     lines = [f"{tree.get('project', '?')} — updated {tree.get('updated', '?')} ({mode})"]

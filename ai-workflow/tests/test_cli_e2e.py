@@ -89,6 +89,14 @@ class TestProjectTreeCliE2E(unittest.TestCase):
         self.assertEqual(result.returncode, 0, f"Command failed with stderr:\n{result.stderr}")
         self.assertIn("AI Workflow", result.stdout)
 
+    def test_show_meta_status_weak_prunes_tree(self):
+        """--status weak shows only weak branches, not the full composed tree."""
+        result = self._run_cli("show", "meta", "--status", "weak")
+        self.assertEqual(result.returncode, 0, f"Command failed with stderr:\n{result.stderr}")
+        self.assertIn("Roleplay demo", result.stdout)
+        self.assertIn("Fictional: cement silent fallbacks", result.stdout)
+        self.assertNotIn("Orient [group] strong", result.stdout)
+
     def test_compose_meta(self):
         """project_tree.py compose meta exits 0 and stdout parses as valid yaml with 'nodes'."""
         result = self._run_cli("compose", "meta")

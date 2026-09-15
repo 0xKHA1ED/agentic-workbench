@@ -326,13 +326,16 @@ def cmd_list_fragments(args: argparse.Namespace) -> int:
 def cmd_show(args: argparse.Namespace) -> int:
     if args.fragment:
         tree, _ = _load_target(args.project, args.fragment)
-        print(model.ascii_tree(tree, composed=False))
+        composed = False
     elif args.raw:
         tree = model.load_tree(args.project)
-        print(model.ascii_tree(tree, composed=False))
+        composed = False
     else:
         tree = _load_composed(args.project)
-        print(model.ascii_tree(tree, composed=True))
+        composed = True
+    if args.status:
+        tree = model.filter_tree_by_status(tree, args.status)
+    print(model.ascii_tree(tree, composed=composed))
     for frag, _ in model.list_pending_proposals(args.project):
         flag = _fragment_flag(frag)
         print(
@@ -626,6 +629,10 @@ def _extract_global_flags(argv: list[str]) -> tuple[list[str], dict[str, Any]]:
             opts["raw"] = True
             i += 1
             continue
+        if token == "--status" and i + 1 < len(argv):
+            opts["status"] = argv[i + 1]
+            i += 2
+            continue
         if token == "--recursive":
             opts["recursive"] = True
             i += 1
@@ -692,6 +699,12 @@ def main(argv: list[str] | None = None) -> int:
         help="For show: display root nodes.yaml without composing fragments",
     )
     parser.add_argument(
+        "--status",
+        metavar="STATUS",
+        default=None,
+        help="For show: prune to nodes with this status (keeping ancestor path)",
+    )
+    parser.add_argument(
         "--recursive",
         action="store_true",
         help="For validate-patterns: also validate linked fragment files",
@@ -726,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
         args.no_prompt = False
     if not hasattr(args, "dry_run"):
         args.dry_run = False
+    if not hasattr(args, "status"):
+        args.status = None
 
     if args.command == "install-decay-hook":
         return cmd_install_decay_hook(args)
