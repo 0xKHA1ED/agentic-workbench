@@ -16,6 +16,62 @@ from project_tree import model
 from tree_server import TreeHandler, get_project_fingerprint
 
 
+class TestNodeStatusRoute(unittest.TestCase):
+    """Epic A — GET /api/node/<project>/<id> and the node_status aggregator."""
+
+    def _capture_handler(self):
+        handler = TreeHandler.__new__(TreeHandler)
+        captured = {"status": 200}
+
+        def fake_json(payload, status=200):
+            captured["payload"] = payload
+            captured["status"] = status
+
+        def fake_error(status, message):
+            captured["status"] = status
+            captured["error"] = message
+
+        handler._json_response = fake_json  # type: ignore[method-assign]
+        handler._error_response = fake_error  # type: ignore[method-assign]
+        return handler, captured
+
+    def test_aggregator_leaf(self):
+        from project_tree import status as tree_status
+
+        result = tree_status.node_status("meta", "viewer-server")
+        self.assertEqual(result["node_id"], "viewer-server")
+        self.assertEqual(result["kind"], "work")
+        self.assertTrue(result["read_only"])
+        self.assertIn("gate_states", result)
+
+    def test_aggregator_missing_raises(self):
+        from project_tree import status as tree_status
+
+        with self.assertRaises(ValueError):
+            tree_status.node_status("meta", "no-such-node-xyz")
+
+    def test_route_ok(self):
+        handler, captured = self._capture_handler()
+        handler._handle_get_node("/api/node/meta/viewer-server")
+        self.assertEqual(captured["status"], 200)
+        self.assertEqual(captured["payload"]["node_id"], "viewer-server")
+
+    def test_route_missing_node_404(self):
+        handler, captured = self._capture_handler()
+        handler._handle_get_node("/api/node/meta/no-such-node-xyz")
+        self.assertEqual(captured["status"], 404)
+
+    def test_route_bad_path_400(self):
+        handler, captured = self._capture_handler()
+        handler._handle_get_node("/api/node/meta")
+        self.assertEqual(captured["status"], 400)
+
+    def test_route_rejects_traversal(self):
+        handler, captured = self._capture_handler()
+        handler._handle_get_node("/api/node/meta/..%2f..%2fetc")
+        self.assertEqual(captured["status"], 400)
+
+
 class TestTreeServerPendingProposals(unittest.TestCase):
     """Tests for pending proposal detection in tree_server.TreeHandler._load_tree."""
 

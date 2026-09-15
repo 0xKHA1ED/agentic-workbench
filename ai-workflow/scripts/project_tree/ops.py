@@ -77,6 +77,22 @@ def set_status(tree: dict, node_id: str, status: str) -> dict:
     return out
 
 
+@_register("set-contract")
+def set_contract(tree: dict, node_id: str, contract_path: str) -> dict:
+    """Link a node to its assembled scope-contract markdown (data.contract)."""
+    if not str(contract_path).strip():
+        raise ValueError("contract path must be non-empty")
+    return set_data(tree, node_id, {"contract": str(contract_path).strip()})
+
+
+@_register("set-claims")
+def set_claims(tree: dict, node_id: str, claims_path: str) -> dict:
+    """Link a node to its claims JSON (data.claims)."""
+    if not str(claims_path).strip():
+        raise ValueError("claims path must be non-empty")
+    return set_data(tree, node_id, {"claims": str(claims_path).strip()})
+
+
 @_register("mark-stale")
 def mark_stale(tree: dict, node_id: str, notes: str | None = None) -> dict:
     out = copy.deepcopy(tree)

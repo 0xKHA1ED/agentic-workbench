@@ -1,48 +1,68 @@
-# Fragment: platform
-constraints:
-  codebase:
-  - .
+# Project tree fragment — managed by scripts/project_tree.py
 nodes:
 - id: platform-tree-cli
   title: project_tree CLI
   kind: group
-  status: weak
+  status: strong
   data:
     pattern: scripts/project_tree/**
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+    dogfood: meta/docs/dogfood/platform-tree-cli.md
   children:
   - id: platform-compose
     title: Fragment compose + list-fragments
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/project_tree/fragments.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_cli_e2e
+      dogfood: meta/docs/dogfood/platform-compose.md
+      contract: meta/specs/platform-compose.md
   - id: platform-ops
     title: reparent, mark-stale, set-all-weak
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/project_tree/ops.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_ops
+      dogfood: meta/docs/dogfood/platform-ops.md
+      contract: meta/specs/platform-ops.md
   - id: platform-patterns
     title: validate-patterns --recursive
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/project_tree/patterns.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_cli_e2e
+      dogfood: meta/docs/dogfood/platform-patterns.md
+      contract: meta/specs/platform-patterns.md
   - id: platform-discovery
     title: Project discovery (meta, examples, host)
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/project_tree/model.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_model
+      dogfood: meta/docs/dogfood/platform-discovery.md
+      contract: meta/specs/platform-discovery.md
 - id: platform-install
   title: INSTALL.md — add to any codebase
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: INSTALL.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_install
+    dogfood: meta/docs/dogfood/platform-install.md
+    contract: meta/specs/platform-install.md
 - id: platform-package-layout
   title: Package layout + AGENTS.md
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: AGENTS.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+    dogfood: meta/docs/dogfood/platform-package-layout.md
+    contract: meta/specs/platform-package-layout.md
+constraints:
+  codebase:
+  - .

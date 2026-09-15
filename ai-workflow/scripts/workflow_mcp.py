@@ -19,6 +19,7 @@ if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
 from project_tree import fragments, model, ops as tree_ops
+from project_tree import status as tree_status
 from project_tree.fragments import compose_tree, walk_nodes
 from project_tree.model import (
     find_node_in_tree,
@@ -57,7 +58,7 @@ from spec_analyze.model import (
 )
 from spec_checklist.model import scan_checklist_status
 from task_breakdown.model import tasks_paths as task_breakdown_paths
-
+import workflow_run
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "ai-workflow"
@@ -496,6 +497,11 @@ def workflow_get_constitution(project: str) -> Dict[str, Any]:
         "constitution_excerpt": excerpt,
         "exists": const is not None,
     }
+
+
+def workflow_node_status(project: str, node_id: str) -> Dict[str, Any]:
+    """Unified read-only status for one node: tree status, contract/verify/dogfood links, claims triage, and clarify/analyze/checklist gate states. Never mutates."""
+    return tree_status.node_status(project, node_id)
 
 
 def workflow_clarify_context(project: str, node_id: str) -> Dict[str, Any]:
@@ -1021,6 +1027,24 @@ def workflow_execute_verification(
     }
 
 
+def workflow_run_start(project: str, node_id: str, path: str = "full") -> Dict[str, Any]:
+    """Start a daily-loop workflow run for a node; execute to the first gate and pause."""
+    return workflow_run.run(project, node_id, path=path)
+
+
+def workflow_run_resume(project: str, node_id: str, decision: str) -> Dict[str, Any]:
+    """Resume a paused gate with an explicit human decision (approve advances; reject aborts)."""
+    return workflow_run.resume(project, node_id, decision=decision)
+
+
+def workflow_run_status(project: str, node_id: str) -> Dict[str, Any]:
+    """Return the persisted workflow run state for a node (or a no_run marker)."""
+    state = workflow_run.status(project, node_id)
+    if state is None:
+        return {"project": project, "node_id": node_id, "status": "no_run"}
+    return state
+
+
 def register_builtin_tools(server: MCPServer) -> None:
     """Register core workflow tools on an MCPServer instance."""
     server.register_tool(
@@ -1063,6 +1087,24 @@ def register_builtin_tools(server: MCPServer) -> None:
             "required": ["project", "node_id"],
         },
         handler=workflow_get_node,
+    )
+
+    server.register_tool(
+        name="workflow_node_status",
+        description=(
+            "Unified read-only status for one node: tree status, kind, pain, pattern, "
+            "contract/verify/dogfood links, claims triage counts, and clarify/analyze/checklist "
+            "gate states plus a children rollup summary. Never mutates — use to orient a single node."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string", "description": "Project initiative name (e.g. 'meta')"},
+                "node_id": {"type": "string", "description": "Node identifier to summarize"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_node_status,
     )
 
     server.register_tool(
@@ -1356,6 +1398,55 @@ def register_builtin_tools(server: MCPServer) -> None:
             "required": ["project"],
         },
         handler=workflow_decay_scan,
+    )
+
+    server.register_tool(
+        name="workflow_run",
+        description="Start a daily-loop workflow run for a node; execute to the first human gate and pause. Gates never auto-advance.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+                "path": {
+                    "type": "string",
+                    "enum": ["spike", "bounded", "full"],
+                    "default": "full",
+                    "description": "Router path; lighter paths skip optional steps by policy",
+                },
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_run_start,
+    )
+
+    server.register_tool(
+        name="workflow_resume",
+        description="Resume a paused workflow gate with an explicit human decision. approve advances; reject aborts (on_reject: abort).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+                "decision": {"type": "string", "enum": ["approve", "reject"]},
+            },
+            "required": ["project", "node_id", "decision"],
+        },
+        handler=workflow_run_resume,
+    )
+
+    server.register_tool(
+        name="workflow_status",
+        description="Return the persisted workflow run state for a node (current step, gate, history, skipped-by-path steps).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "project": {"type": "string"},
+                "node_id": {"type": "string"},
+            },
+            "required": ["project", "node_id"],
+        },
+        handler=workflow_run_status,
     )
 
 

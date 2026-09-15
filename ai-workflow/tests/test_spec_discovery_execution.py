@@ -73,5 +73,61 @@ class TestExecutionAssembly(unittest.TestCase):
         self.assertIn("check_type: command | `echo ok`", verify_section)
 
 
+class TestAssembleContractLink(unittest.TestCase):
+    """Epic F — assemble stages (never auto-applies) a set-contract link."""
+
+    def _make_project(self, tmp: Path):
+        import yaml
+
+        nodes = {
+            "project": "linktest",
+            "nodes": [
+                {
+                    "id": "root",
+                    "title": "Root",
+                    "kind": "group",
+                    "status": "weak",
+                    "data": {"subtree": "fragments/f.yaml"},
+                }
+            ],
+        }
+        (tmp / "nodes.yaml").write_text(yaml.safe_dump(nodes))
+        frag_dir = tmp / "fragments"
+        frag_dir.mkdir()
+        frag = {"nodes": [{"id": "node-x", "title": "Node X", "kind": "work", "status": "weak"}]}
+        (frag_dir / "f.yaml").write_text(yaml.safe_dump(frag))
+
+    def test_propose_contract_link_stages_fragment_proposal(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from project_tree import model
+        from spec_discovery.assemble import propose_contract_link
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            with patch.object(model, "project_dir", return_value=tmp):
+                pending = propose_contract_link("linktest", "node-x", "meta/specs/node-x.md")
+            self.assertTrue(pending.exists())
+            self.assertIn("meta/specs/node-x.md", pending.read_text())
+            # Staging never mutates the live fragment (human still applies).
+            self.assertNotIn("contract", (tmp / "fragments" / "f.yaml").read_text())
+
+    def test_propose_contract_link_unknown_node_raises(self):
+        import tempfile
+        from unittest.mock import patch
+
+        from project_tree import model
+        from spec_discovery.assemble import propose_contract_link
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self._make_project(tmp)
+            with patch.object(model, "project_dir", return_value=tmp):
+                with self.assertRaises(ValueError):
+                    propose_contract_link("linktest", "no-such-node", "meta/specs/x.md")
+
+
 if __name__ == "__main__":
     unittest.main()

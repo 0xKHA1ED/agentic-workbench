@@ -17,51 +17,67 @@ nodes:
 - id: root
   title: AI Workflow
   kind: group
-  status: weak
+  status: strong
   data:
     readme: README.md
     install: INSTALL.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+    dogfood: meta/docs/dogfood/root.md
   children:
   - id: orient
     title: Orient
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/orient.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/orient.md
   - id: understand
     title: Understand
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/understand.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/understand.md
   - id: spec-discovery
     title: Spec discovery
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/spec-discovery.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/spec-discovery.md
   - id: spec-contract
     title: Spec contract
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/spec-contract.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/spec-contract.md
   - id: implement
     title: Implement
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/implement.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/implement.md
   - id: platform
     title: Platform
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/platform.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/platform.md
   - id: reference-improvements
     title: Reference-inspired improvements
     kind: group
-    status: weak
+    status: strong
     data:
       subtree: fragments/reference-improvements.yaml
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/reference-improvements.md
 updated: '2026-09-14'

@@ -111,6 +111,12 @@ class TreeHandler(SimpleHTTPRequestHandler):
         if clean_path.startswith("/api/claims/"):
             self._handle_get_claims(clean_path)
             return
+        if clean_path == "/api/node" or clean_path == "/api/node/":
+            self._error_response(400, "Missing project and node_id: /api/node/<project>/<node_id>")
+            return
+        if clean_path.startswith("/api/node/"):
+            self._handle_get_node(clean_path)
+            return
         if clean_path == "/api/events" or clean_path == "/api/events/":
             self._error_response(400, "Missing project: /api/events/<project>")
             return
@@ -251,6 +257,30 @@ class TreeHandler(SimpleHTTPRequestHandler):
                 self._json_response({"claims": []})
         except Exception as exc:
             self._error_response(500, f"Error loading claims: {exc}")
+
+    def _handle_get_node(self, clean_path: str) -> None:
+        parts = clean_path.removeprefix("/api/node/").strip("/").split("/")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            self._error_response(400, "Invalid path format: expected /api/node/<project>/<node_id>")
+            return
+        project = unquote(parts[0])
+        node_id = unquote(parts[1])
+        if ".." in project or "/" in project or "\\" in project:
+            self._error_response(400, "Invalid project")
+            return
+        if ".." in node_id or "/" in node_id or "\\" in node_id:
+            self._error_response(400, "Invalid node_id")
+            return
+        try:
+            from project_tree import status as tree_status
+
+            self._json_response(tree_status.node_status(project, node_id))
+        except ValueError as exc:
+            self._error_response(404, str(exc))
+        except FileNotFoundError:
+            self._error_response(404, f"Project not found: {project}")
+        except Exception as exc:
+            self._error_response(500, f"Error loading node status: {exc}")
 
     def _handle_proposals_apply(self, data: dict) -> None:
         project = data.get("project")

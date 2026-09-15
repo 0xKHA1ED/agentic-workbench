@@ -15,7 +15,7 @@ def cmd_review(args: argparse.Namespace) -> int:
 
 
 def cmd_assemble(args: argparse.Namespace) -> int:
-    return run_assemble(args.file, output=args.output)
+    return run_assemble(args.file, output=args.output, link=getattr(args, "link", False))
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     p_assemble = sub.add_parser("assemble", help="Build scope-contract markdown from approved claims")
     p_assemble.add_argument("file", type=Path, help="claims JSON file")
     p_assemble.add_argument("-o", "--output", type=Path, default=None, help="Output .md path")
+    p_assemble.add_argument("--link", action="store_true", help="Stage a set-contract proposal linking the node (human applies)")
 
     p_status = sub.add_parser("status", help="Show triage progress")
     p_status.add_argument("file", type=Path)

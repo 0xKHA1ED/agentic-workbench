@@ -1,29 +1,41 @@
-# Fragment: understand
-constraints:
-  codebase:
-  - .
+# Project tree fragment — managed by scripts/project_tree.py
 nodes:
 - id: understand-pain
   title: Capture pain on node data.pain
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: .cursor/skills/project-tree/SKILL.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_ops
+    dogfood: meta/docs/dogfood/understand-pain.md
+    contract: meta/specs/understand-pain.md
 - id: understand-investigate
   title: Investigation ritual before spec-discovery
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: meta/docs/DAILY-LOOP.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+    dogfood: meta/docs/dogfood/understand-investigate.md
+    contract: meta/specs/understand-investigate.md
 - id: understand-decompose
   title: Split concern into child nodes / fragments
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: scripts/project_tree/ops.py
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_ops
+    dogfood: meta/docs/dogfood/understand-decompose.md
+    contract: meta/specs/understand-decompose.md
 - id: understand-attach-subtree
   title: attach-subtree for new product areas
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: scripts/project_tree/ops.py
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_ops
+    dogfood: meta/docs/dogfood/understand-attach-subtree.md
+    contract: meta/specs/understand-attach-subtree.md
+constraints:
+  codebase:
+  - .

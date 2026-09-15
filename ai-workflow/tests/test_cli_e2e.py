@@ -121,5 +121,55 @@ class TestProjectTreeCliE2E(unittest.TestCase):
         self.assertIn("WHICH ONE WINS", result.stdout)
 
 
+class TestFragmentReverseIndex(unittest.TestCase):
+    """Epic G — node_id → fragment reverse index (no --fragment needed)."""
+
+    def test_root_defined_node_resolves_to_none(self):
+        from project_tree import fragments
+
+        self.assertIsNone(fragments.fragment_for_node("meta", "root"))
+        self.assertIsNone(fragments.fragment_for_node("meta", "orient"))
+        self.assertIsNone(fragments.fragment_for_node("meta", "platform"))
+
+    def test_fragment_defined_node_resolves_to_fragment(self):
+        from project_tree import fragments
+
+        self.assertEqual(
+            fragments.fragment_for_node("meta", "viewer-server"),
+            "fragments/orient.yaml",
+        )
+        self.assertEqual(
+            fragments.fragment_for_node("meta", "platform-ops"),
+            "fragments/platform.yaml",
+        )
+        self.assertEqual(
+            fragments.fragment_for_node("meta", "ref-sp-tdd"),
+            "fragments/reference-improvements.yaml",
+        )
+
+    def test_unknown_node_raises(self):
+        from project_tree import fragments
+
+        with self.assertRaises(ValueError):
+            fragments.fragment_for_node("meta", "no-such-node-xyz")
+
+    def test_cli_auto_resolves_fragment_target(self):
+        """_primary_target_node + _auto_resolve_fragment infer the fragment."""
+        import argparse
+
+        from project_tree import cli
+
+        args = argparse.Namespace(
+            project="meta",
+            operation="set-status",
+            rest=["viewer-server", "strong"],
+            fragment=None,
+            json=None,
+            file=None,
+        )
+        cli._auto_resolve_fragment(args)
+        self.assertEqual(args.fragment, "fragments/orient.yaml")
+
+
 if __name__ == "__main__":
     unittest.main()

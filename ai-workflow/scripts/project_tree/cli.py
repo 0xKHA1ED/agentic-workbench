@@ -376,6 +376,63 @@ def _parse_batch_ops(raw: str) -> tuple[str | None, list[dict]]:
         return data.get("summary"), data["ops"]
     raise ValueError("Batch JSON must be a list of ops or {summary, ops}")
 
+# Operations whose first rest-arg names the node whose fragment we can infer.
+_NODE_TARGET_OPS = {
+    "set-data",
+    "set-status",
+    "mark-stale",
+    "clear-stale",
+    "rename",
+    "reparent",
+    "add-child",
+    "add-group",
+    "attach-subtree",
+}
+
+
+def _op_target_node(op: str, op_args: list[Any]) -> str | None:
+    """Best-effort primary node id for an op (parent for add-*/attach)."""
+    if op in _NODE_TARGET_OPS and op_args:
+        return str(op_args[0])
+    return None
+
+
+def _primary_target_node(args: argparse.Namespace) -> str | None:
+    op = args.operation
+    if op == "batch":
+        raw = _batch_payload(args)
+        if not raw:
+            return None
+        try:
+            _, operations = _parse_batch_ops(raw)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        for step in operations:
+            target = _op_target_node(str(step.get("op") or ""), step.get("args") or [])
+            if target:
+                return target
+        return None
+    return _op_target_node(op, list(args.rest or []))
+
+
+def _auto_resolve_fragment(args: argparse.Namespace) -> None:
+    """When --fragment is omitted, infer it from the operation's target node.
+
+    Root-defined nodes resolve to None (root nodes.yaml); nodes living in a
+    fragment resolve to that fragment path. Unknown nodes are left as-is so the
+    op raises its own 'not found' error.
+    """
+    if getattr(args, "fragment", None):
+        return
+    target = _primary_target_node(args)
+    if not target:
+        return
+    try:
+        resolved = fragments.fragment_for_node(args.project, target)
+    except (FileNotFoundError, ValueError):
+        return
+    if resolved:
+        args.fragment = resolved
 
 def _batch_payload(args: argparse.Namespace) -> str | None:
     if args.json:
@@ -415,6 +472,8 @@ def cmd_propose_batch(args: argparse.Namespace) -> int:
 
 def cmd_propose(args: argparse.Namespace) -> int:
     op = args.operation
+
+    _auto_resolve_fragment(args)
 
     if op == "batch":
         return cmd_propose_batch(args)
@@ -468,6 +527,20 @@ def cmd_propose(args: argparse.Namespace) -> int:
             return 1
         node_id, status = args.rest[0], args.rest[1]
         return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-status", [node_id, status]), no_prompt=args.no_prompt)
+
+    if op == "set-contract":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> set-contract <node_id> <contract_path>", file=sys.stderr)
+            return 1
+        node_id, contract_path = args.rest[0], args.rest[1]
+        return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-contract", [node_id, contract_path]), no_prompt=args.no_prompt)
+
+    if op == "set-claims":
+        if len(args.rest) < 2:
+            print("Usage: propose <project> set-claims <node_id> <claims_path>", file=sys.stderr)
+            return 1
+        node_id, claims_path = args.rest[0], args.rest[1]
+        return _propose(args.project, args.fragment, lambda t: ops.apply_op(t, "set-claims", [node_id, claims_path]), no_prompt=args.no_prompt)
 
     if op == "mark-stale":
         if not args.rest:

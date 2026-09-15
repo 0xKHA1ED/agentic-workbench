@@ -1,6 +1,31 @@
 # Install AI Workflow into any codebase
 
-## What you copy
+## One command (recommended)
+
+From the host repo root, after the package is present at `ai-workflow/`:
+
+```bash
+python3 ai-workflow/scripts/install.py init . --project my-product
+```
+
+`awf init` is **inspectable and idempotent**: it prints a diff of every planned
+write and asks before touching `.cursor/` (no blind `curl | bash`). It:
+
+1. writes `.cursor/mcp.json` from the in-repo template,
+2. syncs `.cursor/skills/` from the package with a checksum manifest
+   (`.skills-manifest.json`), so re-running only rewrites changed skills, and
+3. scaffolds `projects/<name>/nodes.yaml`.
+
+Preview without writing anything:
+
+```bash
+python3 ai-workflow/scripts/install.py init . --project my-product --plan
+```
+
+Re-running after no source changes reports "already up to date" and writes
+nothing.
+
+## What you copy (manual alternative)
 
 From this `ai-workflow/` folder into the **host repository**:
 
@@ -13,7 +38,7 @@ From this `ai-workflow/` folder into the **host repository**:
 
 Do **not** copy `meta/` or `examples/` unless you want them — they ship with the package for reference.
 
-## Steps
+## Steps (manual)
 
 ```bash
 # 1. Add package to host repo (pick one)

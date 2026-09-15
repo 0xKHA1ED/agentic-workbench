@@ -384,6 +384,56 @@ class TestWorkflowReadTools(unittest.TestCase):
         self.assertIn("project", tools["workflow_get_node"]["inputSchema"]["properties"])
         self.assertIn("node_id", tools["workflow_get_node"]["inputSchema"]["properties"])
 
+    def test_node_status_tool_registered(self):
+        """Epic A — workflow_node_status is registered with project + node_id schema."""
+        req = {"jsonrpc": "2.0", "id": 102, "method": "tools/list"}
+        resp = self.server.handle_message(req)
+        tools = {t["name"]: t for t in resp.get("result", {}).get("tools", [])}
+        self.assertIn("workflow_node_status", tools)
+        props = tools["workflow_node_status"]["inputSchema"]["properties"]
+        self.assertIn("project", props)
+        self.assertIn("node_id", props)
+
+    def test_node_status_reports_gate_states(self):
+        """Epic A — workflow_node_status returns read-only gate states for a node mid-loop."""
+        resp = self._call_tool("workflow_node_status", {"project": "meta", "node_id": "viewer-server"})
+        self.assertIsNotNone(resp)
+        result = resp.get("result", {})
+        self.assertNotIn("isError", result)
+        data = json.loads(result["content"][0]["text"])
+        self.assertEqual(data["node_id"], "viewer-server")
+        self.assertEqual(data["kind"], "work")
+        self.assertTrue(data["read_only"])
+        self.assertIn("gate_states", data)
+        gates = data["gate_states"]
+        for key in (
+            "needs_clarify",
+            "clarify_status",
+            "analyze_status",
+            "checklist_unchecked",
+            "contract_present",
+            "verify_present",
+            "spec_approved",
+        ):
+            self.assertIn(key, gates)
+        self.assertIn("claims", data)
+        self.assertIn("children_summary", data)
+
+    def test_node_status_group_children_summary(self):
+        """Epic A — group nodes report a descendant-leaf rollup summary."""
+        resp = self._call_tool("workflow_node_status", {"project": "meta", "node_id": "orient-viewer"})
+        data = json.loads(resp["result"]["content"][0]["text"])
+        self.assertEqual(data["kind"], "group")
+        self.assertIsNotNone(data["children_summary"])
+        self.assertGreaterEqual(data["children_summary"]["total_leaves"], 2)
+        self.assertIn("all_strong", data["children_summary"])
+
+    def test_node_status_missing_node_is_error(self):
+        """Epic A — unknown node returns an MCP error, not a crash."""
+        resp = self._call_tool("workflow_node_status", {"project": "meta", "node_id": "no-such-node-xyz"})
+        result = resp.get("result", {})
+        self.assertTrue(result.get("isError"))
+
     def test_workflow_orient_meta_weak(self):
         """Test workflow_orient on meta with default filter weak."""
         resp = self._call_tool("workflow_orient", {"project": "meta", "filter": "weak"})
@@ -403,11 +453,13 @@ class TestWorkflowReadTools(unittest.TestCase):
         for node in data["nodes"]:
             self.assertEqual(node.get("status"), "weak")
             self.assertNotIn("children", node)
-        # Verify strong nodes are excluded
+        # The weak filter returns exactly the weak nodes and excludes every
+        # strong node — robust to the meta tree being fully certified (all strong).
         returned_ids = {n["id"] for n in data["nodes"]}
-        self.assertNotIn("tree-cli-usage", returned_ids)
-        self.assertNotIn("viewer-ui", returned_ids)
-        self.assertIn("root", returned_ids)
+        weak_ids = {n["id"] for n in all_data["nodes"] if n.get("status") == "weak"}
+        strong_ids = {n["id"] for n in all_data["nodes"] if n.get("status") == "strong"}
+        self.assertEqual(returned_ids, weak_ids)
+        self.assertTrue(returned_ids.isdisjoint(strong_ids))
 
     def test_workflow_orient_meta_all(self):
         """Test workflow_orient on meta with filter all."""

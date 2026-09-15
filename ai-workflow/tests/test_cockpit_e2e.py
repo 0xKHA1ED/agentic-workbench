@@ -383,6 +383,22 @@ class TestCockpitE2E(unittest.TestCase):
         self.assertIn("refreshed", data)
         self.assertIn("nodes", data)
 
+    def test_13b_node_status_hud(self):
+        """GET /api/node returns the unified read-only Node HUD payload (Epic A/C)."""
+        status, data = self._get_json(f"/api/node/{self._proj_name}/root")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["node_id"], "root")
+        self.assertTrue(data["read_only"])
+        self.assertIn("gate_states", data)
+        for key in ("contract_present", "verify_present", "analyze_status"):
+            self.assertIn(key, data["gate_states"])
+
+    def test_13c_node_status_missing_returns_404(self):
+        """GET /api/node for an unknown node returns 404 (Epic A/C)."""
+        status, data = self._get_json(f"/api/node/{self._proj_name}/nonexistent-node")
+        self.assertEqual(status, 404)
+        self.assertIn("error", data)
+
     def test_14_sse_detects_file_change(self):
         """SSE stream fires tree_changed when nodes.yaml is modified."""
         import http.client

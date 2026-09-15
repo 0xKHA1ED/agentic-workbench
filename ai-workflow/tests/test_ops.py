@@ -531,6 +531,46 @@ class TestCliProposeIsolationAndOpsExports(unittest.TestCase):
                 self.assertEqual(rc_root_dup, 1)
 
 
+class TestSetContractAndClaims(BaseOpsTestCase):
+    """Epic F — set-contract / set-claims link ops."""
+
+    def test_set_contract_sets_data(self):
+        result = apply_op(self.tree, "set-contract", ["leaf-1", "meta/specs/leaf-1.md"])
+        node = find_node_in_tree(result, "leaf-1")
+        self.assertEqual(node["data"]["contract"], "meta/specs/leaf-1.md")
+
+    def test_set_claims_sets_data(self):
+        result = apply_op(self.tree, "set-claims", ["leaf-1", "meta/claims/leaf-1.json"])
+        node = find_node_in_tree(result, "leaf-1")
+        self.assertEqual(node["data"]["claims"], "meta/claims/leaf-1.json")
+
+    def test_set_contract_preserves_existing_data(self):
+        result = apply_op(self.tree, "set-contract", ["group-a", "meta/specs/group-a.md"])
+        node = find_node_in_tree(result, "group-a")
+        self.assertEqual(node["data"]["meta_key"], "val1")
+        self.assertEqual(node["data"]["contract"], "meta/specs/group-a.md")
+
+    def test_set_contract_empty_path_rejected(self):
+        with self.assertRaises(ValueError):
+            apply_op(self.tree, "set-contract", ["leaf-1", "   "])
+
+    def test_set_contract_missing_node(self):
+        with self.assertRaises(ValueError):
+            apply_op(self.tree, "set-contract", ["no-such", "meta/specs/x.md"])
+
+    def test_set_contract_and_claims_in_batch(self):
+        result = apply_batch(
+            self.tree,
+            [
+                {"op": "set-contract", "args": ["leaf-1", "meta/specs/leaf-1.md"]},
+                {"op": "set-claims", "args": ["leaf-1", "meta/claims/leaf-1.json"]},
+            ],
+        )
+        node = find_node_in_tree(result, "leaf-1")
+        self.assertEqual(node["data"]["contract"], "meta/specs/leaf-1.md")
+        self.assertEqual(node["data"]["claims"], "meta/claims/leaf-1.json")
+
+
 if __name__ == "__main__":
     unittest.main()
 

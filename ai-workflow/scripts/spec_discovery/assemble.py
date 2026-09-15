@@ -133,7 +133,7 @@ def _display_spec_path(out: Path) -> str:
     return str(out)
 
 
-def run_assemble(claims_path: Path, output: Path | None = None) -> int:
+def run_assemble(claims_path: Path, output: Path | None = None, link: bool = False) -> int:
     from .model import load_document, normalize_document
 
     data = normalize_document(load_document(claims_path))
@@ -141,7 +141,40 @@ def run_assemble(claims_path: Path, output: Path | None = None) -> int:
     out = output or spec_output_path(data, claims_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(markdown)
-    data["spec_path"] = _display_spec_path(out)
+    spec_rel = _display_spec_path(out)
+    data["spec_path"] = spec_rel
     save_document(claims_path, data)
     print(f"Wrote {out}")
+
+    if link:
+        project = data.get("project")
+        node = data.get("node")
+        if project and node:
+            try:
+                pending = propose_contract_link(str(project), str(node), spec_rel)
+                print(f"Staged contract link proposal: {pending} (review, then human apply)")
+            except (ValueError, FileNotFoundError) as exc:
+                print(f"Contract link not staged: {exc}")
     return 0
+
+
+def propose_contract_link(project: str, node_id: str, contract_path: str) -> Path:
+    """Stage (never auto-apply) a ``set-contract`` proposal linking a node to its
+    assembled scope-contract. The human still applies it — only the linking
+    mechanics are automated (Epic F). Returns the staged ``.proposed`` path."""
+    from project_tree import fragments, model, ops as tree_ops
+
+    frag_rel = fragments.fragment_for_node(project, node_id)
+    if frag_rel:
+        target_path = fragments.resolve_fragment_path(project, frag_rel)
+        frag_data = fragments.load_fragment_file(target_path)
+        tree = fragments.fragment_as_tree(frag_data, f"{project}:{frag_rel}")
+        proposed = tree_ops.set_contract(tree, node_id, contract_path)
+        pending = fragments.fragment_proposed_path(target_path)
+        fragments.save_fragment_file(pending, proposed)
+    else:
+        tree = model.load_tree(project)
+        proposed = tree_ops.set_contract(tree, node_id, contract_path)
+        pending = model.proposed_path(project)
+        model.save_tree(project, proposed, path=pending)
+    return pending

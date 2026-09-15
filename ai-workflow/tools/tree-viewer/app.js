@@ -346,8 +346,55 @@ async function selectNode(nodeId, claimFocus = "first") {
   }
 
   if (state.currentProject) {
+    await loadNodeHud(state.currentProject, nodeId);
     await loadClaims(state.currentProject, nodeId, claimFocus);
   }
+}
+
+// Epic A/C — unified Node HUD: one read-only glance at a node's loop position.
+async function loadNodeHud(project, nodeId) {
+  const hud = document.getElementById("node-hud");
+  if (!hud) return;
+  try {
+    const res = await fetch(
+      `/api/node/${encodeURIComponent(project)}/${encodeURIComponent(nodeId)}`
+    );
+    if (!res.ok) {
+      hud.innerHTML = `<span class="node-hud-empty">No status for "${escapeHtml(nodeId)}".</span>`;
+      return;
+    }
+    renderNodeHud(await res.json());
+  } catch (err) {
+    hud.innerHTML = `<span class="node-hud-empty">HUD error: ${escapeHtml(String(err))}</span>`;
+  }
+}
+
+function renderNodeHud(status) {
+  const hud = document.getElementById("node-hud");
+  if (!hud) return;
+  const gates = status.gate_states || {};
+  const claims = status.claims || {};
+  const chip = (label, value, ok) =>
+    `<span class="hud-chip ${ok ? "hud-ok" : "hud-warn"}">${escapeHtml(label)}: ${escapeHtml(String(value))}</span>`;
+  const rows = [];
+  rows.push(chip("contract", gates.contract_present ? "yes" : "no", !!gates.contract_present));
+  rows.push(chip("verify", gates.verify_present ? "yes" : "no", !!gates.verify_present));
+  rows.push(chip("analyze", gates.analyze_status || "missing", gates.analyze_status === "complete" || gates.analyze_status === "skipped"));
+  rows.push(chip("checklist ✗", gates.checklist_unchecked ?? 0, (gates.checklist_unchecked ?? 0) === 0));
+  rows.push(chip("clarify", gates.clarify_status || "—", gates.clarify_status === "complete" || gates.clarify_status === null || gates.clarify_status === undefined));
+  rows.push(chip("spec_approved", gates.spec_approved ? "yes" : "no", !!gates.spec_approved));
+  if (claims.exists) {
+    rows.push(chip("claims", `${claims.approved}/${claims.total}`, claims.pending === 0));
+  }
+  if (status.children_summary) {
+    const cs = status.children_summary;
+    rows.push(chip("children", `${cs.strong}/${cs.total_leaves} strong`, cs.all_strong));
+  }
+  const links = [];
+  if (status.contract) links.push(`<div class="hud-link">contract: ${escapeHtml(status.contract)}</div>`);
+  if (status.verify_cmd) links.push(`<div class="hud-link">verify: <code>${escapeHtml(status.verify_cmd)}</code></div>`);
+  if (status.dogfood) links.push(`<div class="hud-link">dogfood: ${escapeHtml(status.dogfood)}</div>`);
+  hud.innerHTML = `<div class="hud-chips">${rows.join("")}</div>${links.join("")}`;
 }
 
 function renderNodeDetails(node) {

@@ -1173,3 +1173,47 @@ kbd {
   }
 }
 
+/* Node HUD (Epic A/C) — one read-only glance at a node's loop position */
+.node-hud {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.node-hud-empty {
+  color: var(--muted, #8b9bb4);
+  font-style: italic;
+  font-size: 0.85em;
+}
+.hud-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.hud-chip {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.hud-ok {
+  background: rgba(56, 158, 13, 0.15);
+  border-color: rgba(56, 158, 13, 0.5);
+  color: #52c41a;
+}
+.hud-warn {
+  background: rgba(250, 173, 20, 0.12);
+  border-color: rgba(250, 173, 20, 0.45);
+  color: #faad14;
+}
+.hud-link {
+  font-size: 0.75rem;
+  color: var(--muted, #8b9bb4);
+  word-break: break-all;
+}
+.hud-link code {
+  font-size: 0.72rem;
+}
+
+

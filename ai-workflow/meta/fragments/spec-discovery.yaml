@@ -1,42 +1,59 @@
-# Fragment: spec-discovery
-constraints:
-  codebase:
-  - .
+# Project tree fragment — managed by scripts/project_tree.py
 nodes:
 - id: discovery-skill
   title: spec-discovery skill
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: .cursor/skills/spec-discovery/SKILL.md
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_discovery_execution
+    dogfood: meta/docs/dogfood/discovery-skill.md
+    contract: meta/specs/discovery-skill.md
 - id: discovery-cli
   title: spec_discovery CLI
   kind: group
-  status: weak
+  status: strong
   data:
     pattern: scripts/spec_discovery/**
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+    dogfood: meta/docs/dogfood/discovery-cli.md
   children:
   - id: discovery-triage
     title: review — y/n/s/e per claim
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/spec_discovery/triage.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_discovery_execution
+      dogfood: meta/docs/dogfood/discovery-triage.md
+      contract: meta/specs/discovery-triage.md
   - id: discovery-assemble
     title: assemble → scope-contract markdown
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/spec_discovery/assemble.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_discovery_execution
+      dogfood: meta/docs/dogfood/discovery-assemble.md
+      contract: meta/specs/discovery-assemble.md
   - id: discovery-validate
     title: validate claims JSON schema
     kind: work
-    status: weak
+    status: strong
     data:
       pattern: scripts/spec_discovery/cli.py
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_discovery_execution
+      dogfood: meta/docs/dogfood/discovery-validate.md
+      contract: meta/specs/discovery-validate.md
 - id: discovery-claims-schema
   title: Claims JSON format
   kind: work
-  status: weak
+  status: strong
   data:
     pattern: scripts/spec_discovery/model.py
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_discovery_execution
+    dogfood: meta/docs/dogfood/discovery-claims-schema.md
+    contract: meta/specs/discovery-claims-schema.md
+constraints:
+  codebase:
+  - .

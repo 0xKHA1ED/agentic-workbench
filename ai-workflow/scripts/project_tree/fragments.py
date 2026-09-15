@@ -74,6 +74,35 @@ def list_fragment_refs(tree: dict[str, Any]) -> list[str]:
     return refs
 
 
+def fragment_for_node(project: str, node_id: str) -> str | None:
+    """Reverse index: return the fragment rel-path that defines ``node_id``.
+
+    Returns ``None`` when the node is defined directly in the root ``nodes.yaml``
+    (including the top-level group stubs that link fragments via ``data.subtree``).
+    Raises ``ValueError`` when the node is defined nowhere on disk. This lets the
+    CLI and MCP infer the ``--fragment`` target from a node id alone.
+    """
+    root = model.load_tree(project)
+    if model.find_node_in_tree(root, node_id) is not None:
+        return None
+
+    frag_dir = model.project_dir(project) / "fragments"
+    if frag_dir.is_dir():
+        for frag_file in sorted(frag_dir.glob("*.yaml")):
+            if frag_file.name.endswith(".proposed"):
+                continue
+            try:
+                frag_data = load_fragment_file(frag_file)
+            except (FileNotFoundError, ValueError):
+                continue
+            rel = f"fragments/{frag_file.name}"
+            candidate = fragment_as_tree(frag_data, f"{project}:{rel}")
+            if model.find_node_in_tree(candidate, node_id) is not None:
+                return rel
+
+    raise ValueError(f"Node '{node_id}' not found in project '{project}'")
+
+
 def compose_nodes(nodes: list[dict], project: str, seen: frozenset[str] | set[str] | None = None) -> list[dict]:
     seen = frozenset(seen) if seen else frozenset()
     return [compose_node(node, project, seen) for node in nodes]

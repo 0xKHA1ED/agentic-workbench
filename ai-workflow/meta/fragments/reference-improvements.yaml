@@ -3,16 +3,18 @@ nodes:
 - id: ref-imp-overview
   title: Reference-inspired improvements (Spec Kit + Superpowers)
   kind: group
-  status: weak
+  status: strong
   data:
     pain: Borrow Spec Kit + Superpowers gates without losing tree + claims + MCP spine
     pattern: references/spec-kit-main/**,references/superpowers-main/**
     notes: Gap analysis backlog — pick one leaf at a time
+    verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+    dogfood: meta/docs/dogfood/ref-imp-overview.md
   children:
   - id: ref-p1-start
     title: P1 — Start here
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-p1-spec-clarify
       title: spec-clarify skill + Cockpit Q&A loop
@@ -24,6 +26,9 @@ nodes:
         inspired_by: templates/commands/clarify.md
         target_meta: spec-discovery
         pattern: .cursor/skills/spec-clarify/SKILL.md,scripts/spec_clarify/**
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_clarify
+        dogfood: meta/docs/dogfood/ref-p1-spec-clarify.md
+        contract: meta/specs/ref-p1-spec-clarify.md
     - id: ref-p1-spec-analyze
       title: spec-analyze — read-only contract/claims gate
       kind: work
@@ -35,6 +40,9 @@ nodes:
         target_meta: spec-discovery
         needs_clarify: false
         clarify: complete
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_analyze
+        dogfood: meta/docs/dogfood/ref-p1-spec-analyze.md
+        contract: meta/specs/ref-p1-spec-analyze.md
     - id: ref-p1-constitution
       title: constitution.md + skill (non-negotiable principles)
       kind: work
@@ -44,10 +52,16 @@ nodes:
         priority: p1
         inspired_by: docs/reference/agentic-sdd.md
         target_meta: spec-contract
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_constitution
+        dogfood: meta/docs/dogfood/ref-p1-constitution.md
+        contract: meta/specs/ref-p1-constitution.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-p1-start.md
   - id: ref-p2-spec
     title: P2 — Spec depth
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-p2-requirements-checklist
       title: requirements-checklist — unit tests for requirements
@@ -59,10 +73,17 @@ nodes:
         inspired_by: templates/commands/checklist.md
         target_meta: spec-discovery
         pattern: .cursor/skills/requirements-checklist/SKILL.md,scripts/spec_checklist/**,meta/templates/requirements-checklist-template.md
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_checklist
+        dogfood: meta/docs/dogfood/ref-p2-requirements-checklist.md
+        contract: meta/specs/ref-p2-requirements-checklist.md
     - id: ref-p2-task-breakdown
       title: task-breakdown — tasks.md + scoped implement
       kind: work
       status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_task_breakdown
+        dogfood: meta/docs/dogfood/ref-p2-task-breakdown.md
+        contract: meta/specs/ref-p2-task-breakdown.md
     - id: ref-p2-technical-plan
       title: technical-plan — optional plan.md (HOW) separate from contract
       kind: work
@@ -73,6 +94,9 @@ nodes:
         inspired_by: templates/commands/plan.md
         target_meta: spec-contract
         pattern: .cursor/skills/technical-plan/SKILL.md,scripts/plan_paths.py,scripts/plan_paths/**
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_plan_paths
+        dogfood: meta/docs/dogfood/ref-p2-technical-plan.md
+        contract: meta/specs/ref-p2-technical-plan.md
     - id: ref-p2-idea-assess
       title: idea-assess — go/kill funnel before tree nodes
       kind: work
@@ -82,122 +106,245 @@ nodes:
         priority: p2
         inspired_by: extensions/assess
         pattern: .cursor/skills/idea-assess/SKILL.md,scripts/idea_assess/**
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_idea_assess
+        dogfood: meta/docs/dogfood/ref-p2-idea-assess.md
+        contract: meta/specs/ref-p2-idea-assess.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-p2-spec.md
   - id: ref-speckit
     title: Spec Kit — skills & artifacts
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-sk-clarify-taxonomy
       title: Clarify taxonomy + one-question loop + MC recommendations
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_clarify
+        dogfood: meta/docs/dogfood/ref-sk-clarify-taxonomy.md
+        contract: meta/specs/ref-sk-clarify-taxonomy.md
+        notes: 'Epic I: retargeted to the taxonomy/MC delta over shipped ref-p1-spec-clarify.'
     - id: ref-sk-specify-separation
       title: WHAT/WHY spec vs HOW plan separation in our artifacts
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_plan_paths
+        dogfood: meta/docs/dogfood/ref-sk-specify-separation.md
+        contract: meta/specs/ref-sk-specify-separation.md
+        notes: 'Epic I: WHAT/WHY-vs-HOW already split by ref-p2-technical-plan; kept
+          as provenance, certified against plan_paths.'
     - id: ref-sk-checklist-gate
       title: Requirements checklist — user-only checkbox gate before implement
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_checklist
+        dogfood: meta/docs/dogfood/ref-sk-checklist-gate.md
+        contract: meta/specs/ref-sk-checklist-gate.md
+        notes: 'Epic I: overlaps shipped ref-p2-requirements-checklist; kept as provenance
+          ledger, certified against the shipping test.'
     - id: ref-sk-analyze-cross
       title: Analyze — claims ↔ contract ↔ VERIFY ↔ IN/OUT consistency
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_spec_analyze
+        dogfood: meta/docs/dogfood/ref-sk-analyze-cross.md
+        contract: meta/specs/ref-sk-analyze-cross.md
+        notes: 'Epic I: retargeted to the cross-consistency-matrix delta over shipped
+          ref-p1-spec-analyze.'
     - id: ref-sk-tasks-phases
       title: Tasks — phased dependency-ordered tasks.md
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_task_breakdown
+        dogfood: meta/docs/dogfood/ref-sk-tasks-phases.md
+        contract: meta/specs/ref-sk-tasks-phases.md
+        notes: 'Epic I: overlaps shipped ref-p2-task-breakdown; kept as provenance
+          ledger, certified against the shipping test.'
     - id: ref-sk-converge
       title: Converge — post-implement gap hunt → new claims/tasks
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_converge
+        dogfood: meta/docs/dogfood/ref-sk-converge.md
+        contract: meta/specs/ref-sk-converge.md
     - id: ref-sk-assess-pipeline
       title: Assess extension — intake→decide before spec-discovery
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_idea_assess
+        dogfood: meta/docs/dogfood/ref-sk-assess-pipeline.md
+        contract: meta/specs/ref-sk-assess-pipeline.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-speckit.md
   - id: ref-speckit-platform
     title: Spec Kit — platform & automation
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-sk-workflow-engine
       title: Workflow YAML — daily loop run/resume/gates
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_workflow_run
+        dogfood: meta/docs/dogfood/ref-sk-workflow-engine.md
+        contract: meta/specs/ref-sk-workflow-engine.md
     - id: ref-sk-workflow-overlays
       title: Workflow overlays — insert lint/verify after implement
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_workflow_run
+        dogfood: meta/docs/dogfood/ref-sk-workflow-overlays.md
+        contract: meta/specs/ref-sk-workflow-overlays.md
     - id: ref-sk-phase-hooks
       title: Phase hooks — before/after clarify, specify, implement
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_workflow_run
+        dogfood: meta/docs/dogfood/ref-sk-phase-hooks.md
+        contract: meta/specs/ref-sk-phase-hooks.md
     - id: ref-sk-feature-dirs
       title: Feature directory convention — specs/<id>/ + feature.json pointer
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_workflow_run
+        dogfood: meta/docs/dogfood/ref-sk-feature-dirs.md
+        contract: meta/specs/ref-sk-feature-dirs.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-speckit-platform.md
   - id: ref-superpowers
     title: Superpowers — process skills
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-sp-using-ai-workflow
       title: using-ai-workflow meta-skill — route daily loop
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_path_router
+        dogfood: meta/docs/dogfood/ref-sp-using-ai-workflow.md
+        contract: meta/specs/ref-sp-using-ai-workflow.md
     - id: ref-sp-brainstorm
       title: Brainstorm — spike/bounded/architectural + approval gate
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-brainstorm.md
+        contract: meta/specs/ref-sp-brainstorm.md
     - id: ref-sp-tdd
       title: TDD mode on implement — red/green before VERIFY walk
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-tdd.md
+        contract: meta/specs/ref-sp-tdd.md
     - id: ref-sp-writing-plans
       title: writing-plans — implementation plan artifact
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-writing-plans.md
+        contract: meta/specs/ref-sp-writing-plans.md
     - id: ref-sp-executing-plans
       title: executing-plans — checkbox plan execution
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-executing-plans.md
+        contract: meta/specs/ref-sp-executing-plans.md
     - id: ref-sp-subagent-dev
       title: subagent-driven-development — per-task implementer + review
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-subagent-dev.md
+        contract: meta/specs/ref-sp-subagent-dev.md
     - id: ref-sp-verify-completion
       title: verification-before-completion — iron law on done claims
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-verify-completion.md
+        contract: meta/specs/ref-sp-verify-completion.md
     - id: ref-sp-systematic-debugging
       title: systematic-debugging — pair with /understand for bugs
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-systematic-debugging.md
+        contract: meta/specs/ref-sp-systematic-debugging.md
     - id: ref-sp-git-worktrees
       title: using-git-worktrees — isolated implement per node
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-git-worktrees.md
+        contract: meta/specs/ref-sp-git-worktrees.md
     - id: ref-sp-code-review
       title: request/receive-code-review skills after implement
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-code-review.md
+        contract: meta/specs/ref-sp-code-review.md
     - id: ref-sp-finish-branch
       title: finishing-a-development-branch — merge/PR ritual
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_skills_present
+        dogfood: meta/docs/dogfood/ref-sp-finish-branch.md
+        contract: meta/specs/ref-sp-finish-branch.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-superpowers.md
   - id: ref-cockpit
     title: Cockpit / viewer UX
     kind: group
-    status: weak
+    status: strong
     children:
     - id: ref-cockpit-clarify-ui
       title: Clarify + checklist triage in tree viewer (J/K/Y/N)
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_cockpit_e2e
+        dogfood: meta/docs/dogfood/ref-cockpit-clarify-ui.md
+        contract: meta/specs/ref-cockpit-clarify-ui.md
     - id: ref-cockpit-workflow-status
       title: Workflow run status + resume from paused gate
       kind: work
-      status: weak
+      status: strong
+      data:
+        verify: PYTHONPATH=scripts python3 -m unittest tests.test_cockpit_e2e
+        dogfood: meta/docs/dogfood/ref-cockpit-workflow-status.md
+        contract: meta/specs/ref-cockpit-workflow-status.md
+    data:
+      verify: PYTHONPATH=scripts python3 -m unittest tests.test_meta_strong
+      dogfood: meta/docs/dogfood/ref-cockpit.md
 constraints:
   codebase:
   - .

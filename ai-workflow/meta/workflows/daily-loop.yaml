@@ -1,0 +1,42 @@
+# Daily-loop workflow — managed by scripts/workflow_run.py
+# Orient → Understand → Clarify(gate) → Spec → Analyze(gate) → Implement → Promote(gate)
+# Gates pause for a human; on_reject aborts. Optional steps are gated by data.path
+# (spike / bounded / full) via the `paths` key.
+name: daily-loop
+description: The compounding daily loop with human gates at clarify, analyze, and promote.
+steps:
+  - id: orient
+    type: step
+  - id: understand
+    type: step
+  - id: clarify
+    type: gate
+    options: [approve, reject]
+    on_reject: abort
+    paths: [full]
+  - id: spec
+    type: step
+    paths: [bounded, full]
+  - id: analyze
+    type: gate
+    options: [approve, reject]
+    on_reject: abort
+    paths: [bounded, full]
+  - id: implement
+    type: step
+  - id: promote
+    type: gate
+    options: [approve, reject]
+    on_reject: abort
+overlays:
+  - after: implement
+    insert:
+      - id: verify
+        type: step
+      - id: lint
+        type: step
+hooks:
+  before_clarify:
+    - "record: clarify-context-loaded"
+  after_implement:
+    - "record: verify-walk-required"

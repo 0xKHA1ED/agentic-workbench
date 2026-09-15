@@ -1,0 +1,27 @@
+# Scope Contract: Session start ritual (show → pick weak)
+
+- **Node:** `orient-session-start` (work)
+- **Pattern:** `meta/docs/DAILY-LOOP.md`
+
+## GOAL
+
+Session start ritual (show → pick weak) behaves as specified and stays regression-proof: its VERIFY command
+passes from a clean checkout and fails if the behavior regresses.
+
+## IN
+
+- The behavior implemented under `meta/docs/DAILY-LOOP.md`.
+- The VERIFY command below exiting 0.
+
+## OUT
+
+- Behavior owned by sibling nodes / other fragments.
+- Anything the VERIFY command does not exercise.
+
+## VERIFY
+
+- [ ] check_type: command | `PYTHONPATH=scripts python3 -m unittest tests.test_workflow_mcp` exits 0 (falsifiable: fails if the behavior is absent).
+
+## ACCEPTANCE
+
+- [ ] `tests.test_workflow_mcp` passes with fresh evidence recorded in the dogfood note.
